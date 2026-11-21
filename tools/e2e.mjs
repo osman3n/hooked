@@ -71,6 +71,76 @@ ok('buying an upgrade raises its level', bought.after === bought.before + 1,
 ok('the level shows in the row', /Lv 1\//.test(bought.label), bought.label);
 ok('the pip row is painted', bought.pips >= 1, String(bought.pips));
 
+// the new loop systems must be live on the deployed build, not just locally
+const mech = await run(client, `
+  const h = window.__hooked;
+  h.ui.closeAll();
+  // snapshot the save: this probe mutates caught/streak, and the reload
+  // assertions below would then be measuring the probe, not persistence
+  const savedCaught = JSON.stringify(h.state.data.caught);
+
+  // 1. the gold window: beginCharge() only rolls a window from IDLE, so the
+  //    game must be reset between samples or every sample reuses the first
+  const lows = [];
+  for (let i = 0; i < 12; i++) {
+    h.game.reset();
+    h.game.beginCharge(false);
+    lows.push(h.game.sweetLo);
+  }
+  const distinct = new Set(lows.map(v => v.toFixed(3))).size;
+
+  // 2. a dead-centre release must register as a perfect cast
+  h.game.reset();
+  h.game.beginCharge(false);
+  h.game.power = (h.game.sweetLo + h.game.sweetHi) / 2;
+  h.game.releaseCharge();
+  const goldCast = h.game.perfectCast;
+
+  // 3. the daily cast must force the abyss on a short rod
+  h.game.reset();
+  h.state.data.rod = 'bamboo';
+  h.state.data.dailyOn = '';
+  h.game.beginCharge(true);
+  h.game.power = 0.4;
+  h.game.releaseCharge();
+  const dailyDepth = h.game.depth;
+  const dailySpent = h.state.dailyReady() === false;
+
+  // 4. streaks: three landings then a loss must reset to zero
+  h.state.data.streak = 0; h.state.data.losses = 0;
+  const def = h.CONTENT.CATCHES[0];
+  for (let i = 0; i < 3; i++) h.state.land(def, 1, 10);
+  const streakUp = h.state.data.streak;
+  const streakMult = h.state.streakMult();
+  h.state.loss();
+  const streakGone = h.state.data.streak;
+
+  // 5. size records: a bigger catch of a known species must flag
+  const small = h.state.land(def, 1, 1);
+  const big = h.state.land(def, 1, 999);
+  const smaller = h.state.land(def, 1, 2);
+
+  // put the save back so the reload assertions test persistence
+  h.state.data.caught = JSON.parse(savedCaught);
+  h.state.data.streak = 0;
+  h.state.data.losses = 0;
+  h.state.save();
+
+  return { distinct, goldCast, dailyDepth, dailySpent,
+           streakUp, streakMult, streakGone,
+           bigRecord: !!big.record, smallRecord: !!smaller.record };
+`);
+ok('the gold window moves every cast', mech.distinct > 4, `${mech.distinct} distinct windows in 12`);
+ok('a dead-centre release is a perfect cast', mech.goldCast === true, String(mech.goldCast));
+ok('the daily cast reaches the abyss on a bamboo rod', mech.dailyDepth >= 41,
+  mech.dailyDepth.toFixed(1) + 'm');
+ok('the daily cast spends itself', mech.dailySpent === true, String(mech.dailySpent));
+ok('landings build a streak', mech.streakUp === 3, String(mech.streakUp));
+ok('the streak pays a bonus', mech.streakMult > 1, mech.streakMult.toFixed(3));
+ok('a loss breaks the streak', mech.streakGone === 0, String(mech.streakGone));
+ok('a bigger catch sets a record', mech.bigRecord === true, String(mech.bigRecord));
+ok('a smaller catch does not', mech.smallRecord === false, String(mech.smallRecord));
+
 // reload: the save must survive, and the HUD must show it on first paint
 await client.send('Page.navigate', { url: URL_ });
 await sleep(2500);
