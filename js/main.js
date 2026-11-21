@@ -3,7 +3,7 @@
    Rule of thumb: if it is a rule, sim.js owns it. If it is a pixel or a noise,
    it is decided here or below. */
 
-import { CATCHES, RARITY, bandFor } from './content.js';
+import { CATCHES, RARITY, bandFor, sizeCm, formatSize } from './content.js';
 import { state } from './state.js';
 import { Game, Phase } from './sim.js';
 import { Renderer } from './render.js';
@@ -217,7 +217,7 @@ requestAnimationFrame(frame);
 window.__hooked = {
   game, state, ui, renderer, Phase,
   /* content is exposed for the test harness only; nothing in the game reads it */
-  CONTENT: { CATCHES, RARITY, bandFor },
+  CONTENT: { CATCHES, RARITY, bandFor, sizeCm, formatSize },
   seed(n = 18) {
     // fill the first n species so screenshots and tests can show a used save
     CATCHES.slice(0, n).forEach((c, i) => {

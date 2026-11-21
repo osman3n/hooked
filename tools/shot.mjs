@@ -110,13 +110,16 @@ async function main() {
     await shoot(page, '05b-secret');
     console.log('shot  05b-secret');
 
-    // a re-catch that beat the old size: green edge, no "new species" tag
+    // a re-catch that beat the old size: green edge, no "new species" tag.
+    // The size must come from the real curve, not an invented number: a Tiddler
+    // is a thumb, and a hardcoded 41.7 cm photographed the bug it was meant to show.
     await evaluate(page, `
       const h = window.__hooked;
       const C = h.CONTENT.CATCHES.find(c => c.id === 'tiddler');
       h.ui.closeAll();
       h.ui.showCard({ reason: 'landed', target: C, perfect: false, mult: 1,
-        coins: C.coins, isNew: false, size: 41.7, record: true }); true`);
+        coins: C.coins, isNew: false, size: h.CONTENT.sizeCm(C.size) * 1.35,
+        record: true }); true`);
     await sleep(600);
     await shoot(page, '05c-record');
     console.log('shot  05c-record');
