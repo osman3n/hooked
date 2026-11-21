@@ -79,9 +79,12 @@ Any static server works (`python -m http.server`, `npx serve`, …). You cannot 
 npm test             # 301 assertions, headless, no browser
 npm run balance      # prints a per-species balance table for 6 player archetypes
 npm run shots        # 8 screenshots via headless Chrome → shots/
+npm run e2e          # plays the DEPLOYED site end-to-end, checks the save reloads
 ```
 
-`npm run shots` needs Chrome. It honours `CHROME_PATH`, otherwise looks for Chrome in the usual Windows location.
+`npm run shots` and `npm run e2e` need Chrome. They honour `CHROME_PATH`, otherwise look for Chrome in the usual Windows location. `e2e` takes an optional URL: `node tools/e2e.mjs http://localhost:8080/`.
+
+CI runs `test` and `balance` on every push (`.github/workflows/ci.yml`) — there is nothing to install, which is the point of having no dependencies.
 
 ## How it is built
 
