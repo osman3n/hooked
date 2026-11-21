@@ -1,0 +1,15 @@
+{
+  "name": "hooked",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A meme fishing game — cast, wait, hook, reel. Catch 40 things, only some of which are fish.",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/serve.mjs 8080",
+    "test": "node tools/selftest.mjs",
+    "balance": "node tools/balance.mjs",
+    "shots": "node tools/shot.mjs"
+  },
+  "keywords": ["game", "canvas", "fishing", "meme", "vanilla-js"],
+  "license": "MIT"
+}

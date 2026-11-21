@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d2b38">
+<meta name="description" content="HOOKED — a meme fishing game. Cast, wait, hook, reel. Catch 40 things that are not all fish.">
+<title>HOOKED · a meme fishing game</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎣</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="scene" aria-label="Fishing scene"></canvas>
+
+<div id="hud">
+  <header id="hudTop">
+    <div id="brand">
+      <h1>HOOKED</h1>
+      <span>a meme fishing game</span>
+    </div>
+    <div id="wallet" title="Coins">
+      <span class="coinIcon">◎</span><b id="coins">0</b>
+    </div>
+  </header>
+
+  <nav id="hudRight">
+    <button id="codexBtn" class="chip">Codex<b id="codexCount">0/40</b></button>
+    <button id="shopBtn" class="chip">Tackle Box</button>
+    <button id="helpBtn" class="chip icon" aria-label="How to play">?</button>
+  </nav>
+
+  <div id="castInfo">
+    <div id="rodLine">Bamboo Rod</div>
+    <div id="depthLine">Shore · 0 m</div>
+  </div>
+
+  <div id="prompt" aria-live="polite"></div>
+
+  <div id="powerWrap" class="hide" aria-hidden="true">
+    <div id="powerTrack"><i id="powerFill"></i><u id="powerMark"></u></div>
+    <div id="powerLabel">HOLD · release to cast</div>
+  </div>
+
+  <div id="reelWrap" class="hide">
+    <div id="reelCard">
+      <div id="reelHead">
+        <span id="reelName">Something</span>
+        <span id="reelState">CALM</span>
+      </div>
+      <div class="meter"><i id="progFill"></i><em>LINE</em></div>
+      <div class="meter strain"><i id="strainFill"></i><em>TENSION</em></div>
+      <div id="reelHint">HOLD to reel · release when it surges</div>
+    </div>
+    <canvas id="reelFish" width="240" height="150" aria-hidden="true"></canvas>
+  </div>
+
+  <div id="actionRow">
+    <button id="actionBtn" aria-describedby="prompt">
+      <span id="actionLabel">HOLD TO CAST</span>
+      <small id="actionSub">space / click</small>
+    </button>
+  </div>
+</div>
+
+<div id="card" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="cardName"></div>
+<div id="codex" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="codexTitle"></div>
+<div id="shop" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="shopTitle"></div>
+<div id="help" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="helpTitle"></div>
+<div id="toast" aria-live="polite"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
