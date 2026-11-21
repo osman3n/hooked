@@ -2,7 +2,7 @@
    No game rules live here; if a decision needs the simulation, it belongs
    in sim.js. This file only answers "what should the player see right now". */
 
-import { CATCHES, RARITY, RODS, LURES, BANDS, bandFor, byId, TOTAL, ALL, VISIBLE, SECRETS, UPGRADES } from './content.js';
+import { CATCHES, RARITY, RODS, LURES, BANDS, bandFor, byId, TOTAL, ALL, VISIBLE, SECRETS, UPGRADES, formatSize } from './content.js';
 import { state } from './state.js';
 import { Phase } from './sim.js';
 import { SFX, isMuted, setMuted } from './audio.js';
@@ -33,6 +33,7 @@ export class UI {
     this.lastCoins = state.coins;
     this.modalOpen = null;
     this.toastTimers = [];
+    this.dailyArmed = false;
     this._bind();
     this._buildCodex();
     this._buildShop();
@@ -72,6 +73,7 @@ export class UI {
       if (e.code === 'KeyC') this.openCodex();
       if (e.code === 'KeyB') this.openShop();
       if (e.code === 'KeyM') this.toggleMute();
+      if (e.code === 'KeyD') this.toggleDaily();
     });
     window.addEventListener('keyup', e => {
       if (e.code === 'Space' || e.code === 'Enter') release(e);
@@ -81,6 +83,9 @@ export class UI {
     $('shopBtn').addEventListener('click', () => { SFX.ui(); this.openShop(); });
     $('helpBtn').addEventListener('click', () => { SFX.ui(); this.openHelp(); });
 
+    const daily = $('dailyBtn');
+    if (daily) daily.addEventListener('click', () => this.toggleDaily());
+
     // clicking the water also casts / hooks — the scene should be live
     $('scene').addEventListener('pointerdown', e => {
       if (this.modalOpen) return;
@@ -88,10 +93,27 @@ export class UI {
     });
   }
 
+  /* Arm or stow the daily deep cast. One per day; the button and the D key
+     both land here so they can never disagree about the state. */
+  toggleDaily() {
+    if (!state.dailyReady()) {
+      SFX.ui();
+      this.toast('Today\'s deep cast is spent. Tomorrow.');
+      return;
+    }
+    this.dailyArmed = !this.dailyArmed;
+    SFX.ui();
+    this.toast(this.dailyArmed
+      ? 'Daily cast armed — hold to throw it deep.'
+      : 'Daily cast put away.');
+    this.refresh();
+  }
+
   onPress() {
     const g = this.game;
     if (g.phase === Phase.IDLE) {
-      g.beginCharge();
+      g.beginCharge(this.dailyArmed && state.dailyReady());
+      if (this.dailyArmed) this.dailyArmed = false;
     } else if (g.phase === Phase.BITE) {
       // handled in sim via input snapshot; UI just flags it
       this.pressedConsumed = true;
@@ -156,6 +178,25 @@ export class UI {
       ? `${band.name} · ${g.depth.toFixed(0)}m`
       : `${band.name} · ready`;
 
+    // daily deep cast availability
+    const daily = $('dailyBtn');
+    if (daily) {
+      const ready = state.dailyReady();
+      daily.classList.toggle('spent', !ready);
+      daily.classList.toggle('armed', !!this.dailyArmed);
+      daily.textContent = ready
+        ? (this.dailyArmed ? 'Deep Cast ✓' : 'Deep Cast')
+        : 'Deep Cast ✕';
+    }
+
+    // streak chip: only worth showing once there is a run to protect
+    const streakChip = $('streakChip');
+    if (streakChip) {
+      const s = state.data.streak;
+      streakChip.classList.toggle('hide', s < 2);
+      if (s >= 2) streakChip.textContent = `${s} in a row · ${state.streakMult().toFixed(2)}×`;
+    }
+
     // prompt + button per phase
     this._phaseUi(g);
   }
@@ -170,15 +211,21 @@ export class UI {
     const reel = $('reelWrap');
 
     // the button is the primary control, so its label is the prompt
+    if (p !== Phase.CHARGING) {
+      // the sweet-spot highlight belongs to the charge only; leaving it on
+      // would make the cast button look actionable during a fight
+      btn.classList.remove('sweet');
+      $('powerFill').classList.remove('sweet');
+    }
     switch (p) {
       case Phase.IDLE: {
         power.classList.add('hide');
         reel.classList.add('hide');
         btn.classList.remove('urgent');
-        label.textContent = 'HOLD TO CAST';
+        label.textContent = this.dailyArmed ? 'THROW IT DEEP' : 'HOLD TO CAST';
         sub.textContent = hint();
         prompt.textContent = state.data.casts === 0
-          ? 'Hold to build power, release to cast. Deeper water, stranger things.'
+          ? 'Hold to build power, release in the gold window. Deeper water, stranger things.'
           : '';
         break;
       }
@@ -186,11 +233,20 @@ export class UI {
         power.classList.remove('hide');
         reel.classList.add('hide');
         btn.classList.remove('urgent');
-        label.textContent = 'RELEASE';
-        sub.textContent = 'power sets your depth';
+        const sweet = g.inSweetSpot();
+        btn.classList.toggle('sweet', sweet);
+        label.textContent = sweet ? 'LET GO!' : 'RELEASE';
+        sub.textContent = sweet ? 'perfect power' : 'power sets your depth';
         prompt.textContent = '';
         $('powerFill').style.width = (g.power * 100).toFixed(1) + '%';
-        $('powerLabel').textContent = g.power > 0.72 ? 'DEEP CAST' : 'RELEASE TO CAST';
+        $('powerFill').classList.toggle('sweet', sweet);
+        // the window itself is painted where it actually is this cast
+        const mark = $('powerMark');
+        mark.style.left = (g.sweetLo * 100).toFixed(1) + '%';
+        mark.style.width = ((g.sweetHi - g.sweetLo) * 100).toFixed(1) + '%';
+        $('powerLabel').textContent = g.daily
+          ? 'DAILY DEEP CAST'
+          : sweet ? 'PERFECT · +8% DEPTH' : 'RELEASE TO CAST';
         break;
       }
       case Phase.CASTING: {
@@ -271,6 +327,19 @@ export class UI {
       st.className = '';
       card.classList.remove('danger');
     }
+
+    // A quiet meter is a dead meter: show whether the line is paying out right
+    // now, so the player can learn the sweet spot without reading the numbers.
+    const pay = $('payTag');
+    if (pay) {
+      const rate = t > 88 ? 'DEAD' : t > 70 ? 'SLOW' : t > 40 ? 'GOOD' : 'WEAK';
+      pay.textContent = g.reeling ? rate : '—';
+      pay.className = 'pay ' + (g.reeling ? rate.toLowerCase() : 'idle');
+    }
+
+    // the danger vignette: a red edge on the canvas only when the line is
+    // genuinely about to go, which is information rather than decoration
+    this._danger = Math.max(0, Math.min(1, (t - 72) / 26));
   }
 
   /* ── catch card ──────────────────────────────────────────────────── */
@@ -301,19 +370,24 @@ export class UI {
       `;
       card.appendChild(wrap);
     } else {
-      const wrap = el('div', 'catchCard' + (c.secret ? ' secret' : ''));
+      const wrap = el('div', 'catchCard' + (c.secret ? ' secret' : '') + (result.record && !result.isNew ? ' record' : ''));
       wrap.style.setProperty('--glowCol', glow);
       const owned = state.data.caught[c.id];
+      const best = state.biggest(c.id);
       wrap.innerHTML = `
         <span class="rarityTag" style="color:${r.color}">${c.secret ? '✦ Secret · ' : ''}${r.label}</span>
         <span class="catchEmoji">${c.emoji}</span>
         <div class="catchName" style="color:${r.color}">${c.name}</div>
+        <div class="catchSize">${formatSize(result.size)}${result.record && !result.isNew ? ' <em>record</em>' : ''}</div>
         <p class="catchBlurb">${c.blurb}</p>
         <div class="catchStats">
           <span class="stat">Value <b>+${result.coins}</b></span>
-          <span class="stat">Depth <b>${bandFor(g_depth(c)).name}</b></span>
+          <span class="stat">Depth <b>${BANDS[c.band].name}</b></span>
           <span class="stat">Seen <b>${owned ? owned.count : 1}×</b></span>
+          ${owned && owned.count > 1 ? `<span class="stat">Best <b>${formatSize(best)}</b></span>` : ''}
           ${result.perfect ? '<span class="stat" style="color:#ffc247">Perfect <b>×1.5</b></span>' : ''}
+          ${result.perfectCast ? '<span class="stat" style="color:#ffc247">Gold cast <b>×1.1</b></span>' : ''}
+          ${state.data.streak > 1 ? `<span class="stat" style="color:#7ee0a2">Streak <b>${state.data.streak} · ${(state.streakMult()).toFixed(2)}×</b></span>` : ''}
         </div>
         ${result.isNew ? '<div class="newTag">New species</div>' : ''}
         <div class="cardBtns">
@@ -446,7 +520,7 @@ export class UI {
       <p class="catchBlurb">${c.blurb}</p>
       <div class="catchStats">
         <span class="stat">Value <b>${c.coins}</b></span>
-        <span class="stat">Depth <b>${bandFor(c).name}</b></span>
+        <span class="stat">Depth <b>${BANDS[c.band].name}</b></span>
         <span class="stat">Caught <b>${got.count}×</b></span>
       </div>
       <div class="cardBtns"><button class="btn" id="cardBack">Back to codex</button></div>`;
@@ -603,18 +677,27 @@ export class UI {
           <b>Hold and release</b> to cast. The power bar sets how far out you go — further out is a different food chain entirely.
         </div></div>
         <div class="helpStep"><span class="helpNum">2</span><div class="helpTxt">
-          <b>Wait for the real bite.</b> The float dips for small nibbles; the big one shakes the ring and turns the button gold. Hook it fast or it is gone.
+          <b>Let go inside the gold window.</b> The gold band moves every cast. Release in it for a <b>gold cast</b>: 8% deeper and a better chance of something rare. Miss it and you still cast — just shorter.
         </div></div>
         <div class="helpStep"><span class="helpNum">3</span><div class="helpTxt">
-          <b>Hold to reel, release to ease.</b> Reeling fills LINE and TENSION together. When the fish surges, tension climbs fast — let go before it hits the top or the line snaps.
+          <b>Wait for the real bite.</b> The float dips for small nibbles; the big one shakes the ring and turns the button gold. Hook it fast or it is gone.
         </div></div>
         <div class="helpStep"><span class="helpNum">4</span><div class="helpTxt">
-          <b>Stay under 75 tension</b> for the whole fight and the catch lands <b>Perfect</b>, worth 1.5×.
+          <b>Hold to reel, release to ease.</b> Reeling fills LINE and TENSION together. The tag on the line meter shows your payout: <b>GOOD</b> near the top, <b>WEAK</b> near the bottom, <b>DEAD</b> when you are about to snap. When the fish surges, tension climbs fast — let go.
+        </div></div>
+        <div class="helpStep"><span class="helpNum">5</span><div class="helpTxt">
+          <b>Keep peak tension under 60</b> and finish inside 22 seconds for <b>Perfect</b>, worth 1.5×. That is slower on purpose: it is a choice about how you want to play, not a bonus you stumble into.
+        </div></div>
+        <div class="helpStep"><span class="helpNum">6</span><div class="helpTxt">
+          <b>Every catch is measured.</b> Land a bigger one than before and it is a <b>record</b>, even for a species you already have. Chains of catches pay a growing bonus, and <b>Deep Cast</b> gives you one free throw straight to the abyss each day.
+        </div></div>
+        <div class="helpStep"><span class="helpNum">7</span><div class="helpTxt">
+          <b>Some things only appear under certain conditions.</b> Cast at 3 a.m. Throw while broke. Lose three in a row. There are eight of them and the codex will not tell you what they are until you find one.
         </div></div>
         <div class="sectLabel">Keys</div>
         <div class="helpTxt" style="font-size:11.5px;line-height:1.9">
           ${hint() === 'tap and hold' ? '<b>Tap and hold</b> the button to cast, tap to hook, hold to reel.' : `<b>Space / click</b> — cast, hook, reel<br>
-          <b>C</b> — codex &nbsp; <b>B</b> — tackle box &nbsp; <b>M</b> — mute &nbsp; <b>Esc</b> — close`}
+          <b>C</b> — codex &nbsp; <b>B</b> — tackle box &nbsp; <b>D</b> — deep cast &nbsp; <b>M</b> — mute &nbsp; <b>Esc</b> — close`}
         </div>
       </div>`;
     $('help').appendChild(panel);
@@ -663,8 +746,6 @@ export class UI {
   }
 }
 
-/* band lookup for a catch definition (depth meter of its band's midpoint) */
-function g_depth(c) {
-  const b = BANDS[c.band];
-  return (b.min + b.max) / 2;
-}
+/* a catch's band name always comes from BANDS[c.band]. Never feed a band
+   index to bandFor() — that takes metres, and mixing the two silently
+   reported "Shore" for everything in the abyss. */

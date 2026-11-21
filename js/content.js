@@ -448,3 +448,23 @@ export function bandFor(depth) {
   for (const band of BANDS) if (depth >= band.min) b = band;
   return b;
 }
+
+/* Size is stored on each catch as a relative bulk index (0.3 = a receipt,
+   2.4 = a retired leviathan), not a measurement. Real lengths are wildly
+   non-linear across that range — a thumb and a whale cannot share a scale —
+   so this curve turns the index into centimetres: ~2 cm at the bottom,
+   ~1.5 km at the top, and a 40 cm pike in between. One function, so the card,
+   the record book and the tests all agree on what a number means. */
+export const sizeCm = size => {
+  const n = Number(size);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return 7 * Math.exp(3.57 * (n - 0.9));
+};
+
+/* how long something is, written the way a person would say it */
+export function formatSize(cm) {
+  if (!(cm > 0)) return '—';
+  if (cm < 100) return `${cm.toFixed(1)} cm`;
+  if (cm < 100000) return `${(cm / 100).toFixed(2)} m`;
+  return `${(cm / 100000).toFixed(2)} km`;
+}

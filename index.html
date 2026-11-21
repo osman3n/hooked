@@ -14,6 +14,7 @@
 </head>
 <body>
 <canvas id="scene" aria-label="Fishing scene"></canvas>
+<div id="vignette" aria-hidden="true"></div>
 
 <div id="hud">
   <header id="hudTop">
@@ -29,12 +30,14 @@
   <nav id="hudRight">
     <button id="codexBtn" class="chip">Codex<b id="codexCount">0/100</b></button>
     <button id="shopBtn" class="chip">Tackle Box</button>
+    <button id="dailyBtn" class="chip daily" title="One deep cast per day">Deep Cast</button>
     <button id="helpBtn" class="chip icon" aria-label="How to play">?</button>
   </nav>
 
   <div id="castInfo">
     <div id="rodLine">Bamboo Rod</div>
     <div id="depthLine">Shore · 0 m</div>
+    <div id="streakChip" class="hide"></div>
   </div>
 
   <div id="prompt" aria-live="polite"></div>
@@ -50,7 +53,7 @@
         <span id="reelName">Something</span>
         <span id="reelState">CALM</span>
       </div>
-      <div class="meter"><i id="progFill"></i><em>LINE</em></div>
+      <div class="meter"><i id="progFill"></i><em>LINE</em><b id="payTag" class="pay idle">—</b></div>
       <div class="meter strain"><i id="strainFill"></i><em>TENSION</em></div>
       <div id="reelHint">HOLD to reel · release when it surges</div>
     </div>

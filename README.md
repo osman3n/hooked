@@ -16,16 +16,28 @@ Fishing minigames are the most-copied, least-understood mechanic in games. Most 
 2. **React** — the bite is a window. Miss it and the fish is gone.
 3. **Fight** — two competing clocks. The fish pulls *and* it webs. You cannot just hold.
 
-HOOKED is an attempt to build those three beats properly in ~3,100 lines of dependency-free JavaScript, and to make the reward for doing it well something funnier than a trout.
+HOOKED is an attempt to build those three beats properly in ~5,300 lines of dependency-free JavaScript, and to make the reward for doing it well something funnier than a trout.
 
 ## The loop
 
 | Beat | What you do | What the game asks |
 | --- | --- | --- |
-| **Cast** | Hold, release on the gold mark | The sweet spot is ~78% power — overshoot and you cast short |
+| **Cast** | Hold, release on the gold window | The window **moves every cast**, so muscle memory is not enough — you have to look |
 | **Wait** | Do nothing. Breathe. | Fake nibbles are indistinguishable from real ones until the last moment |
 | **Bite** | Press within a ~0.95 s window | Every miss is a fish you will never see |
 | **Fight** | Hold to reel, release to ease | Tension and progress are both clocks. Riding the edge fills LINE ~2× faster than playing safe |
+
+### The gold window
+
+The power bar's sweet spot is not a fixed mark at 78% — it is re-rolled every single cast
+(`beginCharge()` picks `lo = 0.42 + rand·0.34`, width `0.09–0.14`). Releasing inside it:
+
+- casts **8% deeper** (capped at the rod's reach, so it never breaks the depth budget), and
+- adds **+0.06 luck**, so slightly better things notice you.
+
+Before this, the mark on the bar was decoration — the sim had no notion of a sweet spot at
+all, and the HTML mark was hardcoded at `left: 78%`. A skill beat the player does not have
+to unlock is worth more than another 20 catches.
 
 ### The fight is the game
 
@@ -87,11 +99,28 @@ Rods are gated on **codex progress**, not on money (`ROD_GATE = [0, 3, 9, 18]`),
 
 Deeper water does not merely pay better, it has **its own roster**. A Shore-only player literally cannot finish the codex, which is what makes the depth bands feel like places rather than difficulty tiers.
 
+## Coming back tomorrow
+
+Three systems exist only to make a second session worth opening:
+
+- **Size records.** Every catch rolls a size from its bulk class (`sizeCm()` maps the
+  relative index onto a log curve — a receipt is 2.4 cm, a retired leviathan is 14.8 m).
+  Beating your own best for a species shows a green edge and a `record` tag. This is the
+  reason re-catching a common is not wasted.
+- **Streak bonus.** Consecutive landings pay up to **×1.20** at ten in a row; any loss
+  resets it to zero. It is visible in the HUD once you have two, so the risk of a
+  cocky fight is a number you can see.
+- **The daily deep cast** (`D`, or the gold chip). Once per local day it forces the cast
+  to at least 41 m — the abyss — regardless of your rod, and adds **+0.14 luck**. It
+  spends itself the moment you let go, and the daily rolls over at *your* midnight
+  (local date, deliberately not UTC).
+
 ## Controls
 
 | Action | Desktop | Touch |
 | --- | --- | --- |
 | Cast / hook / reel | Click or `Space` (hold to charge) | Tap and hold |
+| Daily deep cast | `D` | Deep Cast chip |
 | Codex | `C` | Codex chip |
 | Tackle Box | `B` | Tackle Box chip |
 | Mute | `M` | `?` → mute |
@@ -108,9 +137,9 @@ npm run dev          # serves on http://localhost:8080
 Any static server works (`python -m http.server`, `npx serve`, …). You cannot open `index.html` from the filesystem — ES modules require HTTP.
 
 ```bash
-npm test             # 868 assertions, headless, no browser
+npm test             # 927 assertions, headless, no browser
 npm run balance      # prints a per-species balance table for 6 player archetypes
-npm run shots        # 9 screenshots via headless Chrome → shots/
+npm run shots        # 10 screenshots via headless Chrome → shots/
 npm run e2e          # plays the DEPLOYED site end-to-end, checks the save reloads
 ```
 
@@ -136,7 +165,7 @@ tools/              dev server, CDP client, screenshots, self-test, balance prob
 Deliberate choices:
 
 - **No bundler, no framework, no assets.** The whole repo is text, so GitHub Pages serves the source directly and it scales to any DPI. The favicon is an inline SVG emoji.
-- **`sim.js` has no DOM access.** The entire game is steppable in Node, which is why 868 assertions can run headless and why the balance probe can play 648 fights in a couple of seconds.
+- **`sim.js` has no DOM access.** The entire game is steppable in Node, which is why 927 assertions can run headless and why the balance probe can play 648 fights in a couple of seconds.
 - **All audio is synthesised.** `js/audio.js` builds tones and noise plus a generated convolver reverb, so there is nothing to download and no licensing question.
 - **`tools/cdp.mjs` is a 120-line Chrome DevTools Protocol client** instead of Puppeteer, which keeps the zero-dependency promise while still catching real console errors — that client is how two of the bugs below were found.
 - **Balance is tested, not vibed.** `tools/balance.mjs` plays every species with six strategies (beginner, steady, greedy, idle, masher, calm) and asserts the shape of the outcome, not just that it runs.
@@ -155,6 +184,11 @@ Real ones, found by actually running the thing:
 - **The shop lied about its own upgrades.** `stat(lv)` reported the *current* level, so every unbought upgrade read `−0% TENSION GAIN` — which looks like a broken item, not a purchasable one. Now level 0 shows what the first purchase buys.
 - **A phantom upgrade level survived `load()`.** Corrupt-save repair clamped known ids but left unknown keys in the map, so a renamed upgrade would keep a ghost level. The map is now rebuilt from `UPGRADES` only.
 - **An ineligible secret could eat a real catch's slot.** Secrets are now filtered by their gate *before* weighting, so they are simply not in the water when their condition is false.
+- **The codex called everything "Shore".** `showCodexEntry` passed a catch's band *index* into `bandFor()`, which takes *metres* — so a band-4 abyss catch resolved against depth 4 and matched the shore band. Every codex entry lied about its depth, and nothing failed loudly. The band name now always comes from `BANDS[c.band].name`, and the self-test pins the index-vs-metres distinction.
+- **A Tiddler measured 41.7 cm.** Each catch's `size` is a relative bulk index, not centimetres, but `_land` multiplied it by 34 — so a fish described as "roughly the length of a thumb" measured like a small dog. Sizes now run through `sizeCm()` (a log curve) and `formatSize()`, and the self-test asserts a receipt is under 5 cm while a leviathan is over 2 m.
+- **Haptics threw a console error on load.** `navigator.vibrate` before any user gesture is blocked, which failed the zero-console-errors gate on every screenshot run. `buzz()` now no-ops until the first real gesture.
+- **The help panel documented the wrong Perfect rule.** It promised "stay under 75", while the sim required `maxTension < 60 && fightT < 22`. The copy now matches the code — and the `D` key it advertised was not bound at all until this pass.
+- **The gold window was decoration.** The power bar's gold mark was hardcoded at `left: 78%` in CSS and the sim had no sweet spot at all, so the most skilful-looking part of the cast did nothing. It is now re-rolled per cast and pays depth plus luck.
 
 ## License
 

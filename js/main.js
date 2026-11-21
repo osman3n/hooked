@@ -24,7 +24,12 @@ const ui = new UI(game);
 
 /* Audio can only start inside a gesture, so the first interaction unlocks it. */
 let audioReady = false;
+/* Haptics have the same rule: Chrome refuses (and logs an error for) any
+   navigator.vibrate before the user has touched the page. Gate on a real
+   gesture so the console stays clean and we never nag the browser. */
+let touched = false;
 function unlockAudio() {
+  touched = true;
   if (audioReady) return;
   audioReady = true;
   initAudio();
@@ -68,6 +73,16 @@ function bobber() {
   return renderer.bobberPos || { x: window.innerWidth / 2, y: window.innerHeight * 0.55 };
 }
 
+/* A short vibration on the beats that matter. Silently ignored on desktop,
+   on iOS Safari (no vibrate), and before the first gesture (Chrome throws
+   and logs an error) — never a hard dependency. */
+function buzz(pattern) {
+  if (!touched) return;
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* blocked */ }
+}
+
+const vignette = document.getElementById('vignette');
+
 function onPhase(from, to) {
   const p = bobber();
 
@@ -82,11 +97,13 @@ function onPhase(from, to) {
       SFX.bite();
       renderer.ripple(p.x, p.y, 2.4);
       renderer.splashAt(p.x, p.y, 10, 0.7);
+      buzz([18, 40, 18]);
       break;
     }
     case Phase.FIGHT: {
       SFX.hook();
       paintReelCard(game.target);
+      buzz(24);
       break;
     }
     case Phase.LAND: {
@@ -98,6 +115,8 @@ function onPhase(from, to) {
       renderer.splashAt(p.x, p.y, 26, 1.5);
       renderer.ripple(p.x, p.y, 2.8);
       renderer.floatUp(r.target.emoji, p.x, p.y - 10);
+      if (r.record && !r.isNew) renderer.floatUp('📏', p.x + 34, p.y - 26);
+      buzz(r.target.secret ? [30, 50, 30, 50, 60] : r.isNew ? [24, 40, 24] : 20);
       ui.showCard(r);
       break;
     }
@@ -106,6 +125,7 @@ function onPhase(from, to) {
       if (r && r.reason === 'snapped') {
         SFX.snap();
         renderer.splashAt(p.x, p.y, 16, 1.1);
+        buzz([50, 30, 50]);
       } else {
         SFX.lost();
       }
@@ -174,6 +194,12 @@ function frame(now) {
   renderer.draw(game, dt);
   ui.refresh();
 
+  // the danger edge tracks the tension meter, so the screen itself warns you
+  if (vignette) {
+    const d = game.phase === Phase.FIGHT ? (ui._danger || 0) : 0;
+    vignette.style.opacity = d.toFixed(2);
+  }
+
   requestAnimationFrame(frame);
 }
 
@@ -195,7 +221,12 @@ window.__hooked = {
   seed(n = 18) {
     // fill the first n species so screenshots and tests can show a used save
     CATCHES.slice(0, n).forEach((c, i) => {
-      state.data.caught[c.id] = { count: 1 + (i % 3), best: 1, first: Date.now() };
+      state.data.caught[c.id] = {
+        count: 1 + (i % 3),
+        best: 1,
+        biggest: Math.round(c.size * 34 * (0.7 + (i % 5) * 0.12) * 10) / 10,
+        first: Date.now(),
+      };
     });
     state.data.coins = Math.max(state.data.coins, 900);
     state.save();
@@ -208,6 +239,15 @@ window.__hooked = {
     ui.onPress();
     game.power = power;
     ui.onRelease();
+  },
+  /* throw the daily deep cast without waiting for the player */
+  daily() {
+    if (!state.dailyReady()) { state.data.dailyOn = ''; }
+    ui.dailyArmed = true;
+    ui.onPress();
+    game.power = 0.9;
+    ui.onRelease();
+    return { daily: game.daily, depth: game.depth };
   },
   catchNow() {
     // jump straight to a fight against a random legal catch, for testing

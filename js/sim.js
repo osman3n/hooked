@@ -14,7 +14,7 @@
      - release to bleed tension, but progress bleeds too
    So the player is always choosing between two clocks. That is the whole game. */
 
-import { CATCHES, RODS, LURES, BANDS, bandFor } from './content.js';
+import { CATCHES, RODS, LURES, BANDS, bandFor, sizeCm } from './content.js';
 
 /* Rarity weight for one entry. Secrets are rare-but-reachable when their
    condition holds, so finding one feels like an accident you caused. */
@@ -46,6 +46,10 @@ export class Game {
     this.powerDir = 1;
     this.castPower = 0;
     this.castT = 0;
+    this.sweetLo = 0.72;     // the perfect-power window for THIS cast
+    this.sweetHi = 0.84;
+    this.perfectCast = false;
+    this.daily = false;      // was this cast the once-a-day deep throw?
 
     // water
     this.depth = 0;          // metres of line out for the current cast
@@ -82,12 +86,25 @@ export class Game {
 
   /* ── casting ─────────────────────────────────────────────────────── */
 
-  beginCharge() {
+  beginCharge(daily = false) {
     if (this.phase !== Phase.IDLE) return false;
     this.phase = Phase.CHARGING;
     this.power = 0;
     this.powerDir = 1;
+    this.daily = daily;
+    // The perfect-power band moves every cast, so the meter is a timing test
+    // rather than a memorised slider position. It never lands right at the top:
+    // a band you can only hit by accident is a tease, not a skill.
+    const lo = 0.42 + Math.random() * 0.34;
+    this.sweetLo = lo;
+    this.sweetHi = Math.min(0.94, lo + 0.09 + Math.random() * 0.05);
     return true;
+  }
+
+  /* Is the current charge inside the perfect band? Read by the UI every frame to
+     light the meter up, so the player can see the window coming. */
+  inSweetSpot() {
+    return this.power >= this.sweetLo && this.power <= this.sweetHi;
   }
 
   releaseCharge() {
@@ -95,11 +112,17 @@ export class Game {
     this.phase = Phase.CASTING;
     this.castPower = this.power;
     this.castT = 0;
+    this.perfectCast = this.inSweetSpot();
     // power maps to depth non-linearly: low power is a short flick, high power
     // is a real heave. The rod caps the top end.
     const reach = this.rod.reach;
-    this.depth = clamp(2 + Math.pow(this.castPower, 1.35) * reach, 2, reach);
+    const bonus = (this.perfectCast ? 1.08 : 1) * (this.daily ? 1.35 : 1);
+    this.depth = clamp((2 + Math.pow(this.castPower, 1.35) * reach) * bonus, 2, reach);
+    // a daily throw is meant to go deeper than the rod should allow, so it is
+    // the one cast where the abyss opens early
+    if (this.daily) this.depth = Math.max(this.depth, 41);
     this.state.noteDepth(this.depth);
+    if (this.daily) this.state.claimDaily();
     this.state.data.casts++;
     this.state.save();
     return true;
@@ -333,14 +356,27 @@ export class Game {
     // line slack-ish the whole way, which costs you time. Eyeing the top of the
     // meter is faster; staying calm pays 1.5x. Neither is strictly better.
     const perfect = this.maxTension < 60 && this.fightT < 22;
-    const mult = (perfect ? 1.5 : 1) * this.state.coinMult();
-    const isNew = this.state.land(this.target, mult);
+    // Every catch has a size, and every size is rolled fresh. A species you
+    // have landed ten times can still surprise you, which is what makes the
+    // codex worth reopening. The roll is a ±35% spread around the species'
+    // real length, so a big Tiddler is still a Tiddler.
+    const nominal = sizeCm(this.target.size);
+    const size = Math.round(nominal * (0.65 + Math.random() * 0.7) * 10) / 10;
+    const mult = (perfect ? 1.5 : 1)
+      * this.state.coinMult()
+      * this.state.streakMult()
+      * (this.perfectCast ? 1.1 : 1);
+    const { isNew, record } = this.state.land(this.target, mult, size);
     this.phase = Phase.LAND;
     this.result = {
       reason: 'landed',
       target: this.target,
       perfect,
       mult,
+      size,
+      record,
+      perfectCast: this.perfectCast,
+      daily: this.daily,
       coins: Math.round(this.target.coins * mult),
       isNew,
     };
@@ -358,7 +394,13 @@ export class Game {
   _roll() {
     const depth = this.depth;
     const band = bandFor(depth);
-    const luck = this.lure.luck + this.state.charmLuck();
+    // A perfect cast and the daily throw both tilt the table toward the tail of
+    // the distribution. This is the reward for the timing test: not more coins,
+    // but a real chance at something you would otherwise never meet.
+    const luck = this.lure.luck
+      + this.state.charmLuck()
+      + (this.perfectCast ? 0.06 : 0)
+      + (this.daily ? 0.14 : 0);
     const ctx = {
       power: this.castPower,
       casts: this.state.data.casts,
@@ -367,6 +409,8 @@ export class Game {
       streak: this.state.data.streak,
       hour: new Date().getHours(),
       depth,
+      perfect: this.perfectCast,
+      daily: this.daily,
     };
 
     const weights = [];
@@ -420,5 +464,7 @@ export class Game {
     this.result = null;
     this.maxTension = 0;
     this.fightT = 0;
+    this.perfectCast = false;
+    this.daily = false;
   }
 }

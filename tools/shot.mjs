@@ -91,7 +91,8 @@ async function main() {
       const h = window.__hooked;
       const C = h.game.target;
       h.game.result = { reason: 'landed', target: C, perfect: true, mult: 1.5,
-        coins: Math.round(C.coins * 1.5), isNew: true };
+        coins: Math.round(C.coins * 1.5), isNew: true, size: 34.2,
+        record: true, perfectCast: true };
       h.game.phase = 'land';
       h.ui.showCard(h.game.result); true`);
     await sleep(600);
@@ -104,10 +105,21 @@ async function main() {
       const S = h.CONTENT.CATCHES.find(c => c.secret && c.id === 'maxpower');
       h.ui.closeAll();
       h.ui.showCard({ reason: 'landed', target: S, perfect: false, mult: 1,
-        coins: S.coins, isNew: true }); true`);
+        coins: S.coins, isNew: true, size: 8.4, record: true }); true`);
     await sleep(600);
     await shoot(page, '05b-secret');
     console.log('shot  05b-secret');
+
+    // a re-catch that beat the old size: green edge, no "new species" tag
+    await evaluate(page, `
+      const h = window.__hooked;
+      const C = h.CONTENT.CATCHES.find(c => c.id === 'tiddler');
+      h.ui.closeAll();
+      h.ui.showCard({ reason: 'landed', target: C, perfect: false, mult: 1,
+        coins: C.coins, isNew: false, size: 41.7, record: true }); true`);
+    await sleep(600);
+    await shoot(page, '05c-record');
+    console.log('shot  05c-record');
 
     // codex, with a partly filled save including a couple of secrets
     await evaluate(page, `
@@ -134,10 +146,13 @@ async function main() {
     await shoot(page, '07-shop');
     console.log('shot  07-shop');
 
-    // mobile portrait
+    // mobile portrait — touch emulation is also what flips
+    // matchMedia('(pointer: coarse)'), so the control hint has to become
+    // "tap and hold" here. A viewport override alone does not do it.
     await page.send('Emulation.setDeviceMetricsOverride', {
       width: 390, height: 844, deviceScaleFactor: 3, mobile: true,
     });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     await sleep(700);
     await evaluate(page, 'window.__hooked.ui.closeAll(); window.__hooked.game.reset(); window.__hooked.ui.refresh(); true');
     await sleep(500);
@@ -150,6 +165,8 @@ async function main() {
       canvasW: document.getElementById('scene').width,
       known: window.__hooked.state.knownCount(),
       dpr: window.devicePixelRatio,
+      coarse: window.matchMedia('(pointer: coarse)').matches,
+      hint: document.getElementById('actionSub').textContent,
     })`);
     console.log('state ', JSON.stringify(info));
   } finally {

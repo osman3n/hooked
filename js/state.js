@@ -11,10 +11,17 @@ import { CATCHES, RODS, LURES, UPGRADES, byId, TOTAL } from './content.js';
 
 const KEY = 'hooked.save.v1';
 
+/* A local-date key, not UTC: the daily cast should roll over at the player's
+   midnight, not at Greenwich's. */
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
 const fresh = () => ({
   v: 1,
   coins: 0,
-  caught: {},          // id -> { count, best, first }
+  caught: {},          // id -> { count, best, biggest, first }
   rod: 'bamboo',
   lure: 'none',
   upg: {},             // upgrade id -> level (absent = 0)
@@ -23,6 +30,8 @@ const fresh = () => ({
   totalCoins: 0,
   streak: 0,           // consecutive landings, reset by any loss
   losses: 0,           // consecutive losses, reset by any landing
+  bestStreak: 0,       // longest run ever, for the record book
+  dailyOn: '',         // date key the daily cast was last spent
   muted: false,
   seenIntro: false,
 });
@@ -112,30 +121,57 @@ export const state = {
   waitMult() { return 1 - this.upg('sonar') * 0.12; },       // bite delay
   hookWindow() { return this.upg('hook') * 0.15; },          // extra seconds
 
+  /* A run of landings pays a little extra, so a good streak feels like it is
+     building rather than merely being counted. Capped at 10 so it stays a nudge
+     and never becomes the reason to fish. */
+  streakMult() { return 1 + Math.min(this.data.streak, 10) * 0.02; },
+
+  /* ── the daily cast ──────────────────────────────────────────────── */
+
+  /* true when today's deep cast is still unspent. Compared against a local
+     date key, so it rolls over at the player's midnight, not UTC's. */
+  dailyReady() { return this.data.dailyOn !== todayKey(); },
+
+  /* claim the daily cast; false if it was already spent today */
+  claimDaily() {
+    if (!this.dailyReady()) return false;
+    this.data.dailyOn = todayKey();
+    this.save();
+    return true;
+  },
+
   /* ── catches ─────────────────────────────────────────────────────── */
 
   /* has this species ever been landed? */
   known(id) { return !!this.data.caught[id]; },
   knownCount() { return Object.keys(this.data.caught).length; },
 
-  /* record a landing; returns true if it was the first of its kind */
-  land(catchDef, multiplier = 1) {
+  /* the biggest one of this species ever landed, in cm (0 = never seen) */
+  biggest(id) { return (this.data.caught[id] && this.data.caught[id].biggest) || 0; },
+
+  /* Record a landing. Returns { isNew, record } so the UI can celebrate the
+     right thing without re-reading the save it just mutated. */
+  land(catchDef, multiplier = 1, size = 0) {
     const id = catchDef.id;
     const prev = this.data.caught[id];
     const coins = Math.round(catchDef.coins * multiplier);
+    const isNew = !prev;
+    // a first catch is always a record: there was nothing to beat
+    const record = isNew || size > (prev.biggest || 0);
     this.data.coins += coins;
     this.data.totalCoins += coins;
     this.data.caught[id] = {
       count: (prev?.count || 0) + 1,
       best: Math.max(prev?.best || 0, multiplier),
+      biggest: Math.max(prev?.biggest || 0, size),
       first: prev?.first || Date.now(),
     };
     this.data.streak += 1;
+    this.data.bestStreak = Math.max(this.data.bestStreak || 0, this.data.streak);
     this.data.losses = 0;
-    const isNew = !prev;
-    this.events.push({ type: 'land', id, coins, isNew });
+    this.events.push({ type: 'land', id, coins, isNew, record, size });
     this.save();
-    return isNew;
+    return { isNew, record };
   },
 
   /* a lost fight: breaks the streak and counts the drought, which is what the

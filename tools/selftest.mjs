@@ -11,7 +11,7 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 };
 
-const { CATCHES, RODS, LURES, BANDS, bandFor, RARITY, TOTAL, ALL, VISIBLE, SECRETS, UPGRADES, upgById } = await import('../js/content.js');
+const { CATCHES, RODS, LURES, BANDS, bandFor, RARITY, TOTAL, ALL, VISIBLE, SECRETS, UPGRADES, upgById, sizeCm, formatSize } = await import('../js/content.js');
 const { state } = await import('../js/state.js');
 const { Game, Phase } = await import('../js/sim.js');
 
@@ -66,6 +66,18 @@ env: {
   eq('ALL counts every catch including secrets', ALL, CATCHES.length);
   eq('the catalogue is visible + secret', ALL, VISIBLE.length + SECRETS.length);
   ok('every band has something visible', BANDS.every(b => VISIBLE.some(c => c.band === b.id)));
+
+  /* A catch's band is an INDEX and bandFor() takes METRES. Feeding one into
+     the other is a silent wrong answer ("Shore" for the abyss), so pin the
+     distinction here where it is cheap to catch. */
+  for (const b of BANDS) {
+    ok(`band ${b.id} resolves at its own depth`, bandFor(b.min).id === b.id,
+      `${b.min}m → ${bandFor(b.min).name}`);
+    ok(`band ${b.id} is addressable by index`, BANDS[b.id] && BANDS[b.id].name === b.name);
+    eq(`band ${b.id} index matches its id`, BANDS[b.id].id, b.id);
+  }
+  ok('bandFor takes metres, not an index', bandFor(BANDS[4].min).name !== bandFor(0).name || BANDS[4].min === 0);
+  ok('every catch has a well-formed band shorthand', CATCHES.every(c => typeof c.band === 'number' && !!BANDS[c.band]));
 
   // the roster is meant to be big and mostly not-fish. Guard the intent, not
   // just the count, or a future edit can quietly turn this back into a fish list.
@@ -459,6 +471,149 @@ streak: {
     g._lose(reason);
     eq(`the ${reason} exit counts as a loss`, state.data.losses, 1);
   }
+}
+
+/* ── the perfect cast: a skill beat the player owns ───────────────────── */
+
+perfectCast: {
+  const g = newGame();
+
+  // the window must move between casts, or it degrades into a memorised spot
+  const los = new Set();
+  for (let i = 0; i < 40; i++) { g.reset(); g.beginCharge(); los.add(g.sweetLo.toFixed(3)); }
+  ok('the perfect window moves every cast', los.size > 20, `${los.size} distinct starts`);
+  ok('the window never sits at the very top', Math.max(...[...los].map(Number)) < 0.8);
+
+  // inside the window → the flag is set and the cast goes deeper
+  g.reset(); g.beginCharge();
+  g.power = (g.sweetLo + g.sweetHi) / 2;
+  ok('mid-window reads as a sweet spot', g.inSweetSpot());
+  g.releaseCharge();
+  eq('a sweet-spot release is recorded as perfect', g.perfectCast, true);
+  const goldDepth = g.depth;
+
+  // outside it → no bonus
+  g.reset(); g.beginCharge();
+  g.power = Math.max(0, g.sweetLo - 0.3);
+  ok('outside the window is not a sweet spot', !g.inSweetSpot());
+  g.releaseCharge();
+  eq('a plain release is not perfect', g.perfectCast, false);
+  ok('a gold cast reaches deeper than a plain one', goldDepth > g.depth,
+    `${goldDepth} vs ${g.depth}`);
+
+  // depth is still capped by the rod, bonus or not
+  g.reset(); g.beginCharge();
+  g.power = (g.sweetLo + g.sweetHi) / 2;
+  g.releaseCharge();
+  ok('the gold bonus cannot exceed the rod', g.depth <= RODS[0].reach + 0.001, String(g.depth));
+
+  // the bonus must be worth aiming for but not a different game
+  ok('the gold bonus is a nudge, not a leap', g.depth <= RODS[0].reach);
+}
+
+/* ── size, the reason to catch the same thing twice ───────────────────── */
+
+size: {
+  const g = newGame();
+  const c = CATCHES.find(x => x.band === 0 && !x.secret);
+  state.data.caught = {};
+  state.data.streak = 0;
+
+  const first = state.land(c, 1, 12.5);
+  eq('a first catch is a record by definition', first.record, true);
+  eq('and a new species', first.isNew, true);
+  eq('the size is stored', state.biggest(c.id), 12.5);
+
+  const small = state.land(c, 1, 9.1);
+  eq('a smaller one is not a record', small.record, false);
+  eq('and does not lower the best', state.biggest(c.id), 12.5);
+
+  const big = state.land(c, 1, 20.4);
+  eq('a bigger one is a record', big.record, true);
+  eq('and raises the best', state.biggest(c.id), 20.4);
+
+  eq('all three are counted', state.data.caught[c.id].count, 3);
+}
+
+/* the size index must become a believable real length, not a raw multiplier */
+sizeCurve: {
+  const cm = id => sizeCm(CATCHES.find(c => c.id === id).size);
+
+  ok('the smallest thing is centimetres, not metres', cm('receipt') < 5, `${cm('receipt')}`);
+  ok('a thumb-length fish is thumb-length', cm('tiddler') > 3 && cm('tiddler') < 15, `${cm('tiddler')}`);
+  ok('a legendary sea monster is enormous', cm('leviathan') > 200, `${cm('leviathan')}`);
+  ok('and the whole roster still fits on a sane scale',
+    Math.max(...CATCHES.map(c => sizeCm(c.size))) < 1e6);
+  ok('no catch is zero-length', CATCHES.every(c => sizeCm(c.size) > 0));
+
+  // bigger index must always mean bigger creature: the curve is monotonic
+  const sorted = [...CATCHES].sort((a, b) => a.size - b.size);
+  ok('size is monotonic', sorted.every((c, i) => i === 0 || sizeCm(c.size) >= sizeCm(sorted[i - 1].size)));
+
+  // and the formatter must never print a stupid unit
+  eq('centimetres below a metre', formatSize(41.7), '41.7 cm');
+  eq('metres below a kilometre', formatSize(248.6), '2.49 m');
+  eq('kilometres for the absurd', formatSize(148160), '1.48 km');
+  eq('nothing prints as a dash', formatSize(0), '—');
+  eq('a non-number prints as a dash', formatSize(NaN), '—');
+}
+
+/* ── the streak multiplier: a reason not to gamble a run away ──────────── */
+
+streakMult: {
+  const g = newGame();
+  state.data.streak = 0;
+  eq('no streak, no bonus', state.streakMult(), 1);
+  state.data.streak = 5;
+  ok('a run pays more', state.streakMult() > 1, String(state.streakMult()));
+  state.data.streak = 100;
+  eq('the bonus is capped, so it cannot snowball', Number(state.streakMult().toFixed(2)), 1.2);
+
+  // and it must reach the payout, not just the display
+  const target = CATCHES.find(x => x.rarity === 'common' && x.band === 0);
+
+  state.data.streak = 0;
+  state.data.upg = {};
+  const plain = (() => { g.target = target; g.phase = Phase.FIGHT; g._startFight(); g._land(); return g.result.coins; })();
+  state.data.streak = 10;
+  const streaked = (() => { g.target = target; g.phase = Phase.FIGHT; g._startFight(); g._land(); return g.result.coins; })();
+  ok('a streak really pays more coins', streaked > plain, `${plain} → ${streaked}`);
+}
+
+/* ── the daily deep cast: one guaranteed shot at the abyss ─────────────── */
+
+daily: {
+  const g = newGame();
+  state.data.dailyOn = '';
+
+  ok('the daily starts ready', state.dailyReady());
+  eq('claiming it works once', state.claimDaily(), true);
+  eq('claiming it twice does not', state.claimDaily(), false);
+  ok('and it is then spent', !state.dailyReady());
+
+  // it must reset on a new day, not on a new session
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  state.data.dailyOn = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  ok('yesterday\'s cast is ready again today', state.dailyReady());
+
+  // the daily throw must actually open the abyss, even with a short rod
+  g.reset();
+  g.beginCharge(true);
+  g.power = 0.5;
+  g.releaseCharge();
+  ok('the daily cast goes deeper than the rod allows', g.depth >= 41, String(g.depth));
+  eq('and spends the daily', state.dailyReady(), false);
+  eq('the flag reaches the result path', g.daily, true);
+
+  // a normal cast must NOT reach the abyss with a short rod
+  state.data.dailyOn = '';
+  g.reset();
+  g.beginCharge(false);
+  g.power = 1;
+  g.releaseCharge();
+  ok('a normal cast obeys the rod', g.depth <= RODS[0].reach + 0.001, String(g.depth));
+  ok('and does not spend the daily', state.dailyReady());
 }
 
 /* ── save / load ─────────────────────────────────────────────────────── */
