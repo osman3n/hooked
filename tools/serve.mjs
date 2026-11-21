@@ -5,7 +5,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -67,8 +67,10 @@ export function serve(port = 0, root = ROOT) {
   });
 }
 
-/* `node tools/serve.mjs 8080` runs it directly */
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+/* `node tools/serve.mjs 8080` runs it directly. Compare through pathToFileURL:
+   hand-building `file://` + a path yields two slashes, while import.meta.url on
+   Windows is `file:///C:/...`. That mismatch made `npm run dev` exit 0 without listening. */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.argv[2] || 8080);
   const { url } = await serve(port);
   console.log(`HOOKED → ${url}`);

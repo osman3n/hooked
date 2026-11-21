@@ -37,7 +37,10 @@ export class UI {
     this._bind();
     this._buildCodex();
     this._buildShop();
+    this._buildSettings();
     this._buildHelp();
+    this.applyHudScale();
+    this.applyMotion();
     this.refresh();
   }
 
@@ -62,6 +65,7 @@ export class UI {
     window.addEventListener('pointercancel', release);
 
     window.addEventListener('keydown', e => {
+      if (e.code === 'Tab') this._trapFocus(e);
       if (e.code === 'Space' || e.code === 'Enter') {
         if (this.modalOpen) {
           if (e.code === 'Enter') { e.preventDefault(); this._advanceCard(); }
@@ -74,6 +78,7 @@ export class UI {
       if (e.code === 'KeyB') this.openShop();
       if (e.code === 'KeyM') this.toggleMute();
       if (e.code === 'KeyD') this.toggleDaily();
+      if (e.code === 'KeyS') this.openSettings();
     });
     window.addEventListener('keyup', e => {
       if (e.code === 'Space' || e.code === 'Enter') release(e);
@@ -82,6 +87,12 @@ export class UI {
     $('codexBtn').addEventListener('click', () => { SFX.ui(); this.openCodex(); });
     $('shopBtn').addEventListener('click', () => { SFX.ui(); this.openShop(); });
     $('helpBtn').addEventListener('click', () => { SFX.ui(); this.openHelp(); });
+
+    const settings = $('settingsBtn');
+    if (settings) settings.addEventListener('click', () => {
+      SFX.ui();
+      if (this.modalOpen === 'settings') this.closeAll(); else this.openSettings();
+    });
 
     const daily = $('dailyBtn');
     if (daily) daily.addEventListener('click', () => this.toggleDaily());
@@ -335,6 +346,22 @@ export class UI {
       const rate = t > 88 ? 'DEAD' : t > 70 ? 'SLOW' : t > 40 ? 'GOOD' : 'WEAK';
       pay.textContent = g.reeling ? rate : '—';
       pay.className = 'pay ' + (g.reeling ? rate.toLowerCase() : 'idle');
+    }
+
+    // The fight has a hard clock (fightLimit) and losing to it reads as the fish
+    // escaping for no reason. A player cannot lose to a rule they cannot see, so
+    // the remaining time is shown, and only starts shouting in the last stretch.
+    const left = Math.max(0, g.fightLimit - g.fightT);
+    const pct = g.fightLimit > 0 ? (left / g.fightLimit) * 100 : 0;
+    const clock = $('fightClock');
+    const fill = $('clockFill');
+    const tag = $('clockTag');
+    if (clock && fill && tag) {
+      fill.style.width = pct.toFixed(1) + '%';
+      const secs = Math.ceil(left);
+      tag.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+      clock.classList.toggle('low', left < 8);
+      clock.classList.toggle('critical', left < 4);
     }
 
     // the danger vignette: a red edge on the canvas only when the line is
@@ -660,6 +687,175 @@ export class UI {
     return state.knownCount() >= ROD_GATE[i];
   }
 
+  /* ── settings ────────────────────────────────────────────────────────
+     Two controls only, both about readability rather than taste. HUD scale is
+     the accessibility fallback the HUD guidelines suggest when per-element
+     customisation is out of scope; the motion toggle exists because the scene
+     animates constantly and an OS-level preference is not always visible to a
+     page loaded from localStorage. */
+
+  _buildSettings() {
+    const panel = el('div', 'panel');
+    panel.innerHTML = `
+      <div class="panelHead">
+        <div>
+          <h2 id="settingsTitle">Settings</h2>
+          <div class="sub">Make the boat fit your eyes</div>
+        </div>
+        <button class="xBtn" data-close aria-label="Close settings">✕</button>
+      </div>
+      <div class="panelBody">
+        <div class="sectLabel">Display</div>
+
+        <div class="setRow">
+          <div class="setInfo">
+            <div class="setName">HUD size</div>
+            <div class="setDesc">Scales every panel, label and button. The water keeps its own resolution.</div>
+          </div>
+          <div class="setCtrl">
+            <input id="hudRange" class="range" type="range" min="80" max="160" step="10"
+                   aria-label="HUD size" aria-valuetext="100 percent">
+            <output id="hudOut" class="rangeOut" for="hudRange">100%</output>
+          </div>
+        </div>
+
+        <div class="setRow">
+          <div class="setInfo">
+            <div class="setName">Calm the water</div>
+            <div class="setDesc">Stops the ambient drift, ripples and float-ups. The game stays fully playable.</div>
+          </div>
+          <div class="setCtrl">
+            <button id="motionBtn" class="toggle" role="switch" aria-checked="false"
+                    aria-label="Calm the water"><i></i><span>Off</span></button>
+          </div>
+        </div>
+
+        <div class="sectLabel">Sound</div>
+
+        <div class="setRow">
+          <div class="setInfo">
+            <div class="setName">Audio</div>
+            <div class="setDesc">Everything is synthesised in the browser. No files are downloaded.</div>
+          </div>
+          <div class="setCtrl">
+            <button id="muteBtn" class="toggle" role="switch" aria-checked="false"
+                    aria-label="Sound"><i></i><span>On</span></button>
+          </div>
+        </div>
+
+        <div class="sectLabel">Progress</div>
+        <div class="setRow">
+          <div class="setInfo">
+            <div class="setName">Reset save</div>
+            <div class="setDesc">Erases the codex, coins and upgrades. Settings are kept.</div>
+          </div>
+          <div class="setCtrl">
+            <button id="resetBtn" class="btn danger">Reset</button>
+          </div>
+        </div>
+        <div id="resetConfirm" class="confirm hide">
+          <span>This cannot be undone. Everything you caught goes back in the sea.</span>
+          <div class="confirmBtns">
+            <button id="resetNo" class="btn">Keep it</button>
+            <button id="resetYes" class="btn danger">Yes, reset</button>
+          </div>
+        </div>
+      </div>`;
+    $('settings').appendChild(panel);
+
+    panel.querySelector('[data-close]').addEventListener('click', () => this.closeAll());
+    $('settings').addEventListener('click', e => { if (e.target.id === 'settings') this.closeAll(); });
+
+    $('hudRange').addEventListener('input', e => {
+      this.setHudScale(Number(e.target.value) / 100);
+    });
+    $('motionBtn').addEventListener('click', () => {
+      state.data.reduceMotion = !state.data.reduceMotion;
+      state.save();
+      SFX.ui();
+      this.applyMotion();
+      this._refreshSettings();
+    });
+    $('muteBtn').addEventListener('click', () => {
+      this.toggleMute();
+      this._refreshSettings();
+    });
+    $('resetBtn').addEventListener('click', () => {
+      SFX.ui();
+      $('resetConfirm').classList.remove('hide');
+      $('resetYes').focus({ preventScroll: true });
+    });
+    $('resetNo').addEventListener('click', () => {
+      $('resetConfirm').classList.add('hide');
+      $('resetBtn').focus({ preventScroll: true });
+    });
+    $('resetYes').addEventListener('click', () => {
+      state.reset();
+      // state.reset keeps presentation prefs, so re-apply them rather than
+      // assuming the DOM still matches
+      this.applyHudScale();
+      this.applyMotion();
+      this._refreshSettings();
+      this._refreshCodex();
+      this._refreshShop();
+      $('resetConfirm').classList.add('hide');
+      this.toast('Save wiped. The sea remembers nothing.');
+      this.closeAll();
+    });
+  }
+
+  openSettings() {
+    this._refreshSettings();
+    $('settings').classList.remove('hide');
+    this.modalOpen = 'settings';
+    const r = $('hudRange');
+    if (r) r.focus({ preventScroll: true });
+  }
+
+  _refreshSettings() {
+    const scale = state.data.hudScale;
+    const range = $('hudRange');
+    if (range) {
+      range.value = String(Math.round(scale * 100));
+      range.setAttribute('aria-valuetext', `${Math.round(scale * 100)} percent`);
+    }
+    const out = $('hudOut');
+    if (out) out.textContent = `${Math.round(scale * 100)}%`;
+
+    const motion = $('motionBtn');
+    if (motion) {
+      const on = state.data.reduceMotion;
+      motion.setAttribute('aria-checked', String(on));
+      motion.classList.toggle('on', on);
+      motion.querySelector('span').textContent = on ? 'Calm' : 'Off';
+    }
+
+    const mute = $('muteBtn');
+    if (mute) {
+      const on = !isMuted();
+      mute.setAttribute('aria-checked', String(on));
+      mute.classList.toggle('on', on);
+      mute.querySelector('span').textContent = on ? 'On' : 'Muted';
+    }
+  }
+
+  /* writes the CSS variable, in one place, so the DOM can never disagree with
+     the save */
+  setHudScale(v) {
+    state.data.hudScale = Math.min(1.6, Math.max(0.8, v));
+    state.save();
+    this.applyHudScale();
+    this._refreshSettings();
+  }
+
+  applyHudScale() {
+    document.documentElement.style.setProperty('--hud', String(state.data.hudScale));
+  }
+
+  applyMotion() {
+    document.body.classList.toggle('calm', !!state.data.reduceMotion);
+  }
+
   /* ── help ────────────────────────────────────────────────────────── */
 
   _buildHelp() {
@@ -686,18 +882,24 @@ export class UI {
           <b>Hold to reel, release to ease.</b> Reeling fills LINE and TENSION together. The tag on the line meter shows your payout: <b>GOOD</b> near the top, <b>WEAK</b> near the bottom, <b>DEAD</b> when you are about to snap. When the fish surges, tension climbs fast — let go.
         </div></div>
         <div class="helpStep"><span class="helpNum">5</span><div class="helpTxt">
-          <b>Keep peak tension under 60</b> and finish inside 22 seconds for <b>Perfect</b>, worth 1.5×. That is slower on purpose: it is a choice about how you want to play, not a bonus you stumble into.
+          <b>The clock under the meters is the fish's patience.</b> Strong fish tire of being hooked and leave when it runs out, so a slow reel can lose a fight you were winning. It only turns gold and red in the last few seconds.
         </div></div>
         <div class="helpStep"><span class="helpNum">6</span><div class="helpTxt">
-          <b>Every catch is measured.</b> Land a bigger one than before and it is a <b>record</b>, even for a species you already have. Chains of catches pay a growing bonus, and <b>Deep Cast</b> gives you one free throw straight to the abyss each day.
+          <b>Keep peak tension under 60</b> and finish inside 22 seconds for <b>Perfect</b>, worth 1.5×. That is slower on purpose: it is a choice about how you want to play, not a bonus you stumble into.
         </div></div>
         <div class="helpStep"><span class="helpNum">7</span><div class="helpTxt">
+          <b>Every catch is measured.</b> Land a bigger one than before and it is a <b>record</b>, even for a species you already have. Chains of catches pay a growing bonus, and <b>Deep Cast</b> gives you one free throw straight to the abyss each day.
+        </div></div>
+        <div class="helpStep"><span class="helpNum">8</span><div class="helpTxt">
           <b>Some things only appear under certain conditions.</b> Cast at 3 a.m. Throw while broke. Lose three in a row. There are eight of them and the codex will not tell you what they are until you find one.
         </div></div>
         <div class="sectLabel">Keys</div>
         <div class="helpTxt" style="font-size:11.5px;line-height:1.9">
           ${hint() === 'tap and hold' ? '<b>Tap and hold</b> the button to cast, tap to hook, hold to reel.' : `<b>Space / click</b> — cast, hook, reel<br>
-          <b>C</b> — codex &nbsp; <b>B</b> — tackle box &nbsp; <b>D</b> — deep cast &nbsp; <b>M</b> — mute &nbsp; <b>Esc</b> — close`}
+          <b>C</b> — codex &nbsp; <b>B</b> — tackle box &nbsp; <b>D</b> — deep cast &nbsp; <b>S</b> — settings &nbsp; <b>M</b> — mute &nbsp; <b>Esc</b> — close`}
+        </div>
+        <div class="helpTxt" style="font-size:11.5px;line-height:1.9;color:var(--faint);margin-top:8px">
+          Everything is keyboard reachable. If the text is small, <b>Settings → HUD size</b> scales the whole interface without touching the water.
         </div>
       </div>`;
     $('help').appendChild(panel);
@@ -716,11 +918,34 @@ export class UI {
       this.modalOpen = null;
       return;
     }
-    ['card', 'codex', 'shop', 'help'].forEach(id => $(id).classList.add('hide'));
+    ['card', 'codex', 'shop', 'settings', 'help'].forEach(id => $(id).classList.add('hide'));
     const wasCard = this.modalOpen === 'card';
     this.modalOpen = null;
     if (wasCard) { this.game.reset(); }
     this.refresh();
+  }
+
+  /* Tab must not walk out of a modal into the HUD behind it. Every overlay is a
+     role="dialog" with aria-modal="true", so a focus trap is the missing half of
+     that claim; without it a keyboard player tabs into controls they cannot see. */
+  _trapFocus(e) {
+    if (e.key !== 'Tab' || !this.modalOpen) return;
+    const ov = $(this.modalOpen === 'entry' ? 'card' : this.modalOpen);
+    if (!ov) return;
+    const items = [...ov.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )].filter(n => !n.disabled && n.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !ov.contains(active))) {
+      e.preventDefault();
+      last.focus({ preventScroll: true });
+    } else if (!e.shiftKey && (active === last || !ov.contains(active))) {
+      e.preventDefault();
+      first.focus({ preventScroll: true });
+    }
   }
 
   toggleMute() {

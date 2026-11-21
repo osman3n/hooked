@@ -149,6 +149,30 @@ async function main() {
     await shoot(page, '07-shop');
     console.log('shot  07-shop');
 
+    // settings, with the HUD enlarged so the shot proves the scale control works
+    // rather than just showing a slider at its default
+    await evaluate(page, `
+      const h = window.__hooked;
+      h.ui.closeAll();
+      h.ui.openSettings();
+      h.ui.setHudScale(1.15); true`);
+    await sleep(400);
+    await shoot(page, '07b-settings');
+    console.log('shot  07b-settings');
+
+    // the help panel: the one screen whose copy is easiest to get wrong, since
+    // it describes rules that live in sim.js
+    await evaluate(page, `
+      window.__hooked.ui.closeAll();
+      window.__hooked.ui.openHelp(); true`);
+    await sleep(350);
+    await shoot(page, '07c-help');
+    console.log('shot  07c-help');
+
+    // back to defaults before the mobile shot, or the layout it shows is scaled
+    await evaluate(page, 'window.__hooked.ui.setHudScale(1); window.__hooked.ui.closeAll(); true');
+    await sleep(250);
+
     // mobile portrait — touch emulation is also what flips
     // matchMedia('(pointer: coarse)'), so the control hint has to become
     // "tap and hold" here. A viewport override alone does not do it.

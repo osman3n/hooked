@@ -16,7 +16,7 @@ Fishing minigames are the most-copied, least-understood mechanic in games. Most 
 2. **React** — the bite is a window. Miss it and the fish is gone.
 3. **Fight** — two competing clocks. The fish pulls *and* it webs. You cannot just hold.
 
-HOOKED is an attempt to build those three beats properly in ~5,300 lines of dependency-free JavaScript, and to make the reward for doing it well something funnier than a trout.
+HOOKED is an attempt to build those three beats properly in ~4,500 lines of dependency-free JavaScript, and to make the reward for doing it well something funnier than a trout.
 
 ## The loop
 
@@ -48,6 +48,7 @@ There is no way to brute-force it:
 - **Playing it safe is slow, not safe.** Progress scales with tension: 0.55× at slack, 1.0× at 66. Wobbling in the middle means every fight runs near its 30–80 s clock.
 - **Surges are the tell.** A surging fish keeps pulling even as you ease, so releasing is mandatory exactly when it feels worst.
 - **`PERFECT` is a choice, not a bonus.** It requires keeping peak tension under 60 **and** landing it — a deliberately gentle, slow fight. It pays ×1.5.
+- **The fish has a clock too.** Every fight has a patience bar under the meters, and it turns gold then red in the last few seconds. It used to be invisible, which meant the game could take a fight from you with no on-screen reason.
 
 That gives four distinct ways to lose: snap at 100 tension, let slack hit 4.5 s, run out the fish's clock, or fumble the bite.
 
@@ -123,8 +124,21 @@ Three systems exist only to make a second session worth opening:
 | Daily deep cast | `D` | Deep Cast chip |
 | Codex | `C` | Codex chip |
 | Tackle Box | `B` | Tackle Box chip |
-| Mute | `M` | `?` → mute |
+| Settings | `S` | ⚙ chip |
+| Mute | `M` | Settings → Audio |
 | Close panel | `Esc` | ✕ |
+
+Every panel is reachable by keyboard, Tab is trapped inside the open overlay, and focus returns to where it was when the panel closes.
+
+## Settings
+
+Three things live behind the ⚙ chip, and all of them persist:
+
+- **HUD size**, 80–160% in 10% steps. It scales the interface layer only — `transform: scale(var(--hud))` on `#hud` — so labels and buttons grow while the water keeps its own resolution. This is the recommended fallback when per-element HUD placement is out of scope: one slider instead of fifteen.
+- **Calm the water.** Stops the ambient drift, ripples and float-ups. It deliberately does *not* stop the bobber, the meters or the fight clock, because those carry information rather than decoration.
+- **Reset save.** Asks first, and keeps your display and sound settings — a new run should not reset the player's eyes to defaults.
+
+The setting is applied through exactly one function (`setHudScale`), which writes the CSS variable and the save together, so the DOM cannot disagree with what was stored.
 
 ## Running it
 
@@ -139,7 +153,7 @@ Any static server works (`python -m http.server`, `npx serve`, …). You cannot 
 ```bash
 npm test             # 927 assertions, headless, no browser
 npm run balance      # prints a per-species balance table for 6 player archetypes
-npm run shots        # 10 screenshots via headless Chrome → shots/
+npm run shots        # 12 screenshots via headless Chrome → shots/
 npm run e2e          # plays the DEPLOYED site end-to-end, checks the save reloads
 ```
 
@@ -189,6 +203,10 @@ Real ones, found by actually running the thing:
 - **Haptics threw a console error on load.** `navigator.vibrate` before any user gesture is blocked, which failed the zero-console-errors gate on every screenshot run. `buzz()` now no-ops until the first real gesture.
 - **The help panel documented the wrong Perfect rule.** It promised "stay under 75", while the sim required `maxTension < 60 && fightT < 22`. The copy now matches the code — and the `D` key it advertised was not bound at all until this pass.
 - **The gold window was decoration.** The power bar's gold mark was hardcoded at `left: 78%` in CSS and the sim had no sweet spot at all, so the most skilful-looking part of the cast did nothing. It is now re-rolled per cast and pays depth plus luck.
+- **`npm run dev` silently did nothing.** The direct-run guard compared `import.meta.url` against a hand-built `` `file://${path}` ``, which has two slashes, while `import.meta.url` on Windows is `file:///C:/...`. The comparison was never true, so the script exited 0 without listening on a port. Both harnesses hid it because they *import* `serve()` instead of running it. Fixed with `pathToFileURL()`, and verified with an actual HTTP request rather than an exit code.
+- **The player could lose to a timer they could not see.** `if (this.fightT > this.fightLimit)` ended fights after 30–80 s, and no UI element showed that clock. Research into Stardew's HUD and the Accessible Game Design guidelines turned this into a real fix: a visible patience bar, gold under 8 s, red under 4 s. Timers should be readable, not merely enforceable.
+- **The last line of the help panel looked clipped.** It was legitimately scrollable — the content overflowed by exactly 47 px, so the final sentence sat on the cut edge and read as broken text. Tightened the spacing so the panel fits without scrolling at 1280×800.
+- **A regex literal was double-escaped in an e2e assertion.** `/^\\d+:\\d{2}$/` matched a literal backslash, so `1:15` failed while the clock was working perfectly. The assertion now also steps the game and proves the number actually falls, because a format check alone would have passed with a frozen clock.
 
 ## License
 

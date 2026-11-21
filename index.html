@@ -31,6 +31,7 @@
     <button id="codexBtn" class="chip">Codex<b id="codexCount">0/100</b></button>
     <button id="shopBtn" class="chip">Tackle Box</button>
     <button id="dailyBtn" class="chip daily" title="One deep cast per day">Deep Cast</button>
+    <button id="settingsBtn" class="chip icon" aria-label="Settings">⚙</button>
     <button id="helpBtn" class="chip icon" aria-label="How to play">?</button>
   </nav>
 
@@ -55,6 +56,9 @@
       </div>
       <div class="meter"><i id="progFill"></i><em>LINE</em><b id="payTag" class="pay idle">—</b></div>
       <div class="meter strain"><i id="strainFill"></i><em>TENSION</em></div>
+      <div id="fightClock" title="How long the fish will stay hooked">
+        <i id="clockFill"></i><b id="clockTag">0:00</b>
+      </div>
       <div id="reelHint">HOLD to reel · release when it surges</div>
     </div>
     <canvas id="reelFish" width="240" height="150" aria-hidden="true"></canvas>
@@ -71,6 +75,7 @@
 <div id="card" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="cardName"></div>
 <div id="codex" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="codexTitle"></div>
 <div id="shop" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="shopTitle"></div>
+<div id="settings" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="settingsTitle"></div>
 <div id="help" class="ov hide" role="dialog" aria-modal="true" aria-labelledby="helpTitle"></div>
 <div id="toast" aria-live="polite"></div>
 

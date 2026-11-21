@@ -141,18 +141,101 @@ ok('a loss breaks the streak', mech.streakGone === 0, String(mech.streakGone));
 ok('a bigger catch sets a record', mech.bigRecord === true, String(mech.bigRecord));
 ok('a smaller catch does not', mech.smallRecord === false, String(mech.smallRecord));
 
+// the UI work: a visible fight clock, a real focus trap, and a HUD scale that saves
+await run(client, `
+  const h = window.__hooked;
+  h.ui.closeAll();
+  h.game.reset();
+  // force a fight so the clock has something to count
+  h.game.depth = 12; h.game.castPower = 0.6;
+  h.game.target = h.CONTENT.CATCHES.find(c => !c.secret && c.band === 1);
+  h.game.phase = h.Phase.FIGHT;
+  h.game._startFight();
+  h.ui._phaseUi(h.game); h.ui._fightUi(h.game);
+  return true;
+`);
+await sleep(200);
+const clock = await run(client, `
+  const el = document.getElementById('fightClock');
+  const tag = document.getElementById('clockTag');
+  const fill = document.getElementById('clockFill');
+  return { visible: !!el && el.offsetParent !== null,
+           text: tag.textContent,
+           width: fill.style.width,
+           limit: window.__hooked.game.fightLimit,
+           title: el.getAttribute('title') };
+`);
+ok('the fight clock is on screen during a fight', clock.visible === true, String(clock.visible));
+ok('the clock is a real time readout', /^\d+:\d{2}$/.test(clock.text) && clock.text !== '0:00', clock.text);
+
+// format alone proves nothing: step the fight and watch the number fall
+await run(client, `
+  const h = window.__hooked;
+  for (let i = 0; i < 180; i++) h.game.step(1 / 60, { held: false, pressed: false });
+  h.ui._fightUi(h.game);
+  return true;
+`);
+const clock2 = await run(client, `
+  return { text: document.getElementById('clockTag').textContent,
+           pct: document.getElementById('clockFill').style.width };
+`);
+ok('the clock actually counts down', clock2.text !== clock.text, `${clock.text} → ${clock2.text}`);
+ok('the clock bar shrinks with it', parseFloat(clock2.pct) < parseFloat(clock.width), `${clock.width} → ${clock2.pct}`);
+ok('the clock has a bar to match its number', clock.width !== '', clock.width);
+
+// the overlay must hold Tab inside itself, or aria-modal is a lie
+await run(client, `
+  const h = window.__hooked;
+  h.game.reset();
+  h.ui.closeAll();
+  h.ui.openCodex();
+  const f = [...document.querySelectorAll('#codex button, #codex [href], #codex input, #codex [tabindex]:not([tabindex="-1"])')]
+    .filter(n => !n.disabled && n.offsetParent !== null);
+  f[f.length - 1].focus();
+  return f.length;
+`);
+await client.send('Input.dispatchKeyEvent', {
+  type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9,
+});
+await sleep(120);
+const trapped = await run(client, `
+  const a = document.activeElement;
+  return { inside: !!a.closest('#codex'), id: a.id || a.className || a.tagName };
+`);
+ok('Tab wraps inside the open overlay', trapped.inside === true, trapped.id);
+
+// HUD scale must survive a reload, so the setting has to live in the save
+await run(client, `
+  const h = window.__hooked;
+  h.ui.closeAll();
+  h.ui.setHudScale(1.3);
+  return true;
+`);
+await sleep(150);
+const scaled = await run(client, `
+  return { css: getComputedStyle(document.documentElement).getPropertyValue('--hud').trim(),
+           saved: window.__hooked.state.data.hudScale };
+`);
+ok('the HUD scale is applied to the page', scaled.css === '1.3', scaled.css);
+ok('the HUD scale is written to the save', scaled.saved === 1.3, String(scaled.saved));
+
 // reload: the save must survive, and the HUD must show it on first paint
 await client.send('Page.navigate', { url: URL_ });
 await sleep(2500);
 const after = await run(client, `
   const h = window.__hooked;
   h.ui.closeAll();
+  const css = getComputedStyle(document.documentElement).getPropertyValue('--hud').trim();
+  // leave the artifact in a conventional shape for the screenshot below
+  h.ui.setHudScale(1);
   return { known: h.state.knownCount(), coins: h.state.data.coins,
+           hudOnLoad: css,
            chip: document.getElementById('codexCount').textContent };
 `);
 ok('save survived a reload', after.known === 1, 'known ' + after.known);
 ok('coins survived a reload', after.coins > 0, after.coins + 'c');
 ok('HUD reflects the save on first paint', after.chip.startsWith('1/'), after.chip);
+ok('the HUD scale survives a reload', after.hudOnLoad === '1.3', after.hudOnLoad);
 
 const shot = await client.send('Page.captureScreenshot', { format: 'png' });
 const { writeFileSync } = await import('node:fs');

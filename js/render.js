@@ -99,7 +99,13 @@ export class Renderer {
   /* ── main draw ─────────────────────────────────────────────────────── */
 
   draw(game, dt) {
-    this.t += dt;
+    /* Calm mode freezes the decorative motion but keeps every signal: the
+       bobber, the line, the meters and the facing of the scene are still
+       redrawn, because removing those would remove information. What stops is
+       the drift that exists only to be pretty. */
+    const calm = document.body.classList.contains('calm');
+    this.t += calm ? dt * 0.15 : dt;
+    const adt = calm ? 0 : dt;
     const c = this.ctx;
     const { w, h } = this;
 
@@ -113,12 +119,12 @@ export class Renderer {
     this._water(c, w, h, deepT, band);
     this._shafts(c, w, h, deepT);
     this._kelp(c, w, h, deepT);
-    this._ambientFish(c, dt, deepT);
-    this._particles(c, dt);
+    this._ambientFish(c, adt, deepT);
+    this._particles(c, adt);
     this._lineAndBobber(c, game, band);
-    this._splash(c, dt);
-    this._ripples(c, dt);
-    this._floaters(c, dt);
+    this._splash(c, adt);
+    this._ripples(c, adt);
+    this._floaters(c, adt);
     this._vignette(c, w, h);
   }
 

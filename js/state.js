@@ -34,6 +34,8 @@ const fresh = () => ({
   dailyOn: '',         // date key the daily cast was last spent
   muted: false,
   seenIntro: false,
+  hudScale: 1,         // 0.8 – 1.6, applied to the whole glass layer
+  reduceMotion: false, // explicit preference, on top of the OS setting
 });
 
 export const state = {
@@ -67,6 +69,11 @@ export const state = {
         this.data.upg = clean;
       }
     } catch { /* a corrupt save is not worth an error screen */ }
+    // clamp presentation prefs: a hand-edited or stale value must not make the
+    // HUD unusable, and NaN would remove the layer entirely
+    const s = Number(this.data.hudScale);
+    this.data.hudScale = Number.isFinite(s) ? Math.min(1.6, Math.max(0.8, s)) : 1;
+    this.data.reduceMotion = !!this.data.reduceMotion;
     return this;
   },
 
@@ -75,9 +82,13 @@ export const state = {
   },
 
   reset() {
-    const muted = this.data.muted;
+    // presentation choices are not progress: a new run should not reset the
+    // player's eyes back to defaults
+    const { muted, hudScale, reduceMotion } = this.data;
     this.data = fresh();
     this.data.muted = muted;
+    this.data.hudScale = hudScale;
+    this.data.reduceMotion = reduceMotion;
     this.save();
   },
 

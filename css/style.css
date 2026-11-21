@@ -32,6 +32,12 @@
 
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
   --font: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Full HUD scaling, set from Settings. Individual element placement is not
+     customisable, so this is the accessibility fallback the HUD guidelines
+     recommend: one control that makes everything on the glass bigger. It
+     multiplies the HUD layer only — the canvas scene keeps its own resolution. */
+  --hud: 1;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -69,6 +75,13 @@ html, body {
   flex-direction: column;
   pointer-events: none;
   padding: max(14px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  /* One control for the whole glass layer. Scaling the layer rather than each
+     panel keeps the composition intact at every size; the inverse width/height
+     stops the scaled layer from leaving a gap at the right and bottom edges. */
+  transform: scale(var(--hud));
+  transform-origin: top left;
+  width: calc(100% / var(--hud));
+  height: calc(100% / var(--hud));
 }
 
 #hudTop {
@@ -475,6 +488,52 @@ html, body {
   letter-spacing: 0.03em;
   color: var(--faint);
   text-align: center;
+}
+
+/* ── fight clock ───────────────────────────────────────────────────────
+   The fight ends when fightLimit runs out, which used to be invisible. It is
+   drawn as a thin depleting rule under the meters — quiet for most of the
+   fight, then the only thing you look at. Colour alone never carries it: the
+   numeric readout and the shrinking bar both move. */
+
+#fightClock {
+  position: relative;
+  height: 14px;
+  margin: 9px 0 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+#clockFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: 7px;
+  background: linear-gradient(90deg, var(--cyan-deep), var(--cyan));
+  transition: width 0.1s linear, background 0.2s;
+}
+
+#clockTag {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#fightClock.low #clockFill { background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
+#fightClock.critical #clockFill { background: linear-gradient(90deg, #b8322e, var(--red)); }
+#fightClock.critical { box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.55), 0 0 14px rgba(255, 107, 107, 0.45); }
+
+@media (prefers-reduced-motion: reduce) {
+  #clockFill { transition: none; }
 }
 
 #reelCard.danger { border-color: rgba(255, 107, 107, 0.6); animation: shake 0.3s; }
@@ -895,6 +954,173 @@ html, body {
   background: var(--line);
 }
 
+/* ── settings rows ─────────────────────────────────────────────────────
+   A label column and a control column, so the thing you change and the thing
+   that describes it stay in one line at every width. Below 520px the control
+   drops under its label instead of crushing the text. */
+
+.setRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.setInfo { flex: 1; min-width: 0; }
+
+.setName {
+  font-size: 12.5px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.setDesc {
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--faint);
+}
+
+.setCtrl {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* a native range, restyled — no custom drag maths, so keyboard arrows and
+   screen-reader semantics come free */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 132px;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+}
+.range::-moz-range-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  border: 2px solid #06202b;
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+.range::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--cyan);
+  border: 2px solid #06202b;
+}
+
+.rangeOut {
+  min-width: 42px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--cyan);
+}
+
+/* switch: the state is in the knob position, the word, and aria-checked, so it
+   never depends on colour alone */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px 5px 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
+}
+.toggle i {
+  width: 24px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  position: relative;
+  transition: background 0.16s;
+}
+.toggle i::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  transition: transform 0.16s, background 0.16s;
+}
+.toggle.on { color: var(--ink); border-color: rgba(111, 216, 239, 0.5); }
+.toggle.on i { background: rgba(111, 216, 239, 0.35); }
+.toggle.on i::after { transform: translateX(10px); background: var(--cyan); }
+
+.btn.danger {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.45);
+  color: #ffb3b3;
+}
+.btn.danger:hover { background: rgba(255, 107, 107, 0.22); color: #fff; }
+
+.confirm {
+  margin: -2px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 107, 107, 0.4);
+  border-radius: var(--r-sm);
+  background: rgba(255, 107, 107, 0.07);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.confirmBtns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+@media (max-width: 520px) {
+  .setRow { flex-direction: column; align-items: stretch; gap: 10px; }
+  .setCtrl { justify-content: flex-end; }
+  .range { flex: 1; width: auto; }
+}
+
+/* reduced motion: honour the OS and the in-game switch the same way. The
+   in-game class is applied to <body>; the media query covers a player who
+   never opens settings. */
+body.calm #prompt,
+body.calm .catchEmoji,
+body.calm #toast { animation: none !important; }
+
 .codexProgress {
   display: flex;
   align-items: center;
@@ -1003,13 +1229,13 @@ html, body {
 
 .helpStep {
   display: flex;
-  gap: 13px;
-  margin-bottom: 15px;
+  gap: 12px;
+  margin-bottom: 11px;
 }
 .helpNum {
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -1018,8 +1244,11 @@ html, body {
   color: var(--cyan);
   font: 900 11px/1 var(--font);
 }
-.helpTxt { font-size: 12.5px; font-weight: 600; line-height: 1.6; color: var(--ink-3); padding-top: 2px; }
+.helpTxt { font-size: 12px; font-weight: 600; line-height: 1.55; color: var(--ink-3); padding-top: 1px; }
 .helpTxt b { color: var(--ink); font-weight: 900; }
+/* the closing notes must not end flush against the scroll edge, or the last
+   line reads as clipped content instead of a scrollable panel */
+#help .panelBody > :last-child { margin-bottom: 4px; }
 
 /* ── toast ─────────────────────────────────────────────────────────── */
 
