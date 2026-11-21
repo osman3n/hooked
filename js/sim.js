@@ -16,6 +16,12 @@
 
 import { CATCHES, RODS, LURES, BANDS, bandFor } from './content.js';
 
+/* Rarity weight for one entry. Secrets are rare-but-reachable when their
+   condition holds, so finding one feels like an accident you caused. */
+const rarityWeight = r =>
+  r === 'common' ? 1 : r === 'uncommon' ? 0.55 : r === 'rare' ? 0.22
+    : r === 'epic' ? 0.085 : r === 'legendary' ? 0.032 : 0.012;
+
 export const Phase = {
   IDLE: 'idle',
   CHARGING: 'charging',
@@ -126,9 +132,10 @@ export class Game {
     if (this.castT >= T) {
       this.phase = Phase.WAITING;
       this.waitT = 0;
-      // lure shortens the wait; depth lengthens it slightly (further to fall)
+      // lure shortens the wait; depth lengthens it slightly (further to fall).
+      // Sonar is the upgrade that buys patience back.
       const base = lerp(1.1, 4.2, clamp(this.depth / 40, 0, 1));
-      this.waitNeed = base * this.lure.bite * (0.7 + Math.random() * 0.8);
+      this.waitNeed = base * this.lure.bite * this.state.waitMult() * (0.7 + Math.random() * 0.8);
       this.nibbles = [];
       // schedule 0-2 fake nibbles to keep the player honest
       const n = Math.random() < 0.55 ? (Math.random() < 0.4 ? 2 : 1) : 0;
@@ -156,7 +163,8 @@ export class Game {
       this.biteT = 0;
       // roll the catch at the moment of the bite, so the fight is committed
       this.target = this._roll();
-      this.biteWindow = 0.95;
+      // the wider hook buys reaction time on exactly the catches that need it
+      this.biteWindow = 0.95 + this.state.hookWindow();
     }
   }
 
@@ -168,9 +176,16 @@ export class Game {
       return;
     }
     if (this.biteT >= this.biteWindow) {
-      this.phase = Phase.LOSE;
-      this.result = { reason: 'missed', target: this.target };
+      this._lose('missed');
     }
+  }
+
+  /* every losing exit funnels through here, so the streak/drought counters in
+     state.js can never be skipped by one forgotten path */
+  _lose(reason) {
+    this.phase = Phase.LOSE;
+    this.result = { reason, target: this.target };
+    this.state.loss();
   }
 
   _startFight() {
@@ -187,8 +202,10 @@ export class Game {
     this.slackT = 0;
     this.maxTension = 0;
     // generous but finite: enough for a slow, careful player to land anything,
-    // short enough that dithering on the meter cannot go on forever
-    this.fightLimit = 30 + f.stamina * 22;
+    // short enough that dithering on the meter cannot go on forever. The cap
+    // matters — the toughest mythic would otherwise allow a four-minute fight,
+    // which reads as a hang rather than a struggle.
+    this.fightLimit = Math.min(75, 30 + f.stamina * 22);
   }
 
   _fight(dt, input) {
@@ -242,6 +259,9 @@ export class Game {
       dT -= (16 + f.pull * 5) * dt;
       if (this.surging) dT += 10 * dt;      // it keeps pulling even as you ease
     }
+    // Braided Line only softens what tension *gains*; the easing back is left
+    // alone, so the upgrade is a wider margin rather than a slower fight.
+    if (dT > 0) dT *= this.state.tensionMult();
     this.tension = clamp(this.tension + dT, 0, 100);
     this.maxTension = Math.max(this.maxTension, this.tension);
 
@@ -257,7 +277,7 @@ export class Game {
       const sweet = t > 88 ? 0.15
         : t > 70 ? 0.62
         : 0.55 + Math.min(t, 66) / 66 * 0.45;   // 0.55 at slack → 1.0 at 66
-      dP += (24 + 16 / Math.max(0.6, f.pull)) * dt * sweet;
+      dP += (24 + 16 / Math.max(0.6, f.pull)) * dt * sweet * this.state.reelMult();
       if (this.surging) dP *= 0.25;         // a surging fish gives almost nothing
     } else {
       dP -= (5 + f.pull * 1.6) * dt;        // slack line loses ground
@@ -288,8 +308,7 @@ export class Game {
 
     // ── outcomes ──
     if (this.tension >= 100) {
-      this.phase = Phase.LOSE;
-      this.result = { reason: 'snapped', target: this.target };
+      this._lose('snapped');
       return;
     }
     // A fight that neither side can finish is a bug, not tension. Three exits
@@ -297,13 +316,11 @@ export class Game {
     // it no line tension for too long, and a hard clock in case both meters
     // stall. None of them should ever fire during normal play.
     if (this.slackT > 4.5) {
-      this.phase = Phase.LOSE;
-      this.result = { reason: 'escaped', target: this.target };
+      this._lose('escaped');
       return;
     }
     if (this.fightT > this.fightLimit) {
-      this.phase = Phase.LOSE;
-      this.result = { reason: 'escaped', target: this.target };
+      this._lose('escaped');
       return;
     }
     if (this.progress >= 100) {
@@ -316,7 +333,7 @@ export class Game {
     // line slack-ish the whole way, which costs you time. Eyeing the top of the
     // meter is faster; staying calm pays 1.5x. Neither is strictly better.
     const perfect = this.maxTension < 60 && this.fightT < 22;
-    const mult = perfect ? 1.5 : 1;
+    const mult = (perfect ? 1.5 : 1) * this.state.coinMult();
     const isNew = this.state.land(this.target, mult);
     this.phase = Phase.LAND;
     this.result = {
@@ -333,28 +350,43 @@ export class Game {
 
   /* The roll weights by band proximity: a catch whose band matches the cast
      depth is most likely, neighbours still possible, distant ones not. Rarer
-     things are rarer, but the lure flattens the rarity curve a little. */
+     things are rarer, but the lure flattens the rarity curve a little.
+
+     Secret catches are filtered by their `when` gate BEFORE weighting, so an
+     ineligible secret can never occupy a slot — it simply is not in the water
+     this cast. That is why finding one feels caused rather than lucky. */
   _roll() {
     const depth = this.depth;
     const band = bandFor(depth);
-    const luck = this.lure.luck;
+    const luck = this.lure.luck + this.state.charmLuck();
+    const ctx = {
+      power: this.castPower,
+      casts: this.state.data.casts,
+      coins: this.state.coins,
+      losses: this.state.data.losses,
+      streak: this.state.data.streak,
+      hour: new Date().getHours(),
+      depth,
+    };
 
     const weights = [];
     for (const c of CATCHES) {
       const dist = Math.abs(c.band - band.id);
       if (dist > 1) continue;              // no abyss fish in ankle water
+      if (c.secret && !(c.when && c.when(ctx))) continue;
+
       // within-band, prefer the middle of the band
       const mid = (BANDS[c.band].min + BANDS[c.band].max) / 2;
       const span = Math.max(1, (BANDS[c.band].max - BANDS[c.band].min) / 2);
       const centre = 1 - Math.min(1, Math.abs(depth - mid) / (span * 2.4));
       let w = (dist === 0 ? 1 : 0.28) * (0.55 + centre * 0.75);
 
-      // rarity shaping
-      const r = c.rarity;
-      w *= r === 'common' ? 1 : r === 'uncommon' ? 0.55 : r === 'rare' ? 0.22
-         : r === 'epic' ? 0.085 : r === 'legendary' ? 0.032 : 0.012;
+      w *= rarityWeight(c.rarity);
       // luck lifts the tail of the distribution
-      if (r !== 'common') w *= 1 + luck * (r === 'mythic' ? 2.2 : 1.4);
+      if (c.rarity !== 'common') w *= 1 + luck * (c.rarity === 'mythic' ? 2.2 : 1.4);
+      // a live secret must be findable but still a story: rarer than the
+      // rarity alone would suggest, and never so rare that nobody ever sees one
+      if (c.secret) w *= 2.4;
 
       weights.push([c, w]);
     }

@@ -11,7 +11,7 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 };
 
-const { CATCHES, RODS, LURES, BANDS, bandFor, RARITY, TOTAL } = await import('../js/content.js');
+const { CATCHES, RODS, LURES, BANDS, bandFor, RARITY, TOTAL, ALL, VISIBLE, SECRETS, UPGRADES, upgById } = await import('../js/content.js');
 const { state } = await import('../js/state.js');
 const { Game, Phase } = await import('../js/sim.js');
 
@@ -42,6 +42,7 @@ function newGame() {
   state.data = {
     v: 1, coins: 0, caught: {}, rod: 'bamboo', lure: 'none',
     bestDepth: 0, casts: 0, totalCoins: 0, muted: true, seenIntro: true,
+    upg: {}, streak: 0, losses: 0,
   };
   return new Game(state);
 }
@@ -61,7 +62,42 @@ env: {
     ok(`catch ${c.id} has copy`, typeof c.blurb === 'string' && c.blurb.length > 10);
     ok(`catch ${c.id} fight is sane`, c.fight.pull > 0 && c.fight.stamina > 0);
   }
-  eq('TOTAL matches the catalogue', TOTAL, CATCHES.length);
+  eq('TOTAL is the visible roster', TOTAL, VISIBLE.length);
+  eq('ALL counts every catch including secrets', ALL, CATCHES.length);
+  eq('the catalogue is visible + secret', ALL, VISIBLE.length + SECRETS.length);
+  ok('every band has something visible', BANDS.every(b => VISIBLE.some(c => c.band === b.id)));
+
+  // the roster is meant to be big and mostly not-fish. Guard the intent, not
+  // just the count, or a future edit can quietly turn this back into a fish list.
+  ok('the roster is large', ALL >= 100, String(ALL));
+  for (const r of Object.keys(RARITY)) {
+    ok(`the ${r} tier is populated`, CATCHES.some(c => c.rarity === r));
+  }
+
+  // secrets: each needs a gate, and that gate must be answerable from the
+  // context sim.js builds. A secret with no `when` could never be rolled.
+  for (const s of SECRETS) {
+    ok(`secret ${s.id} is flagged`, s.secret === true);
+    ok(`secret ${s.id} has a gate`, typeof s.when === 'function');
+  }
+  ok('secrets are excluded from the visible roster', SECRETS.every(s => !VISIBLE.includes(s)));
+  ok('there are enough secrets to be a surprise', SECRETS.length >= 6, String(SECRETS.length));
+
+  // upgrades must be real: caps positive, a price for every level, rising,
+  // and a readable stat at both ends
+  ok('there are several upgrade tracks', UPGRADES.length >= 4, String(UPGRADES.length));
+  for (const u of UPGRADES) {
+    ok(`upgrade ${u.id} has a positive cap`, u.max > 0);
+    eq(`upgrade ${u.id} prices every level`, u.costs.length, u.max);
+    for (let i = 1; i < u.costs.length; i++) {
+      ok(`upgrade ${u.id} gets dearer`, u.costs[i] > u.costs[i - 1]);
+    }
+    ok(`upgrade ${u.id} has copy`, typeof u.desc === 'string' && u.desc.length > 5);
+    ok(`upgrade ${u.id} reports a stat at 0`, typeof u.stat(0) === 'string' && u.stat(0).length > 0);
+    ok(`upgrade ${u.id} reports a stat at max`, typeof u.stat(u.max) === 'string');
+  }
+  eq('upgrades are addressable by id', upgById.size, UPGRADES.length);
+  eq('upgrade ids are unique', new Set(UPGRADES.map(u => u.id)).size, UPGRADES.length);
   ok('there are catches that are not fish', CATCHES.filter(c => !/\p{Emoji_Presentation}/u.test(c.emoji) || c.id.length > 3).length > 20);
   ok('every band has something in it', BANDS.every(b => CATCHES.some(c => c.band === b.id)));
 
@@ -284,6 +320,145 @@ completable: {
     ![...reachableBands].some(b => Math.abs(c.band - b) <= 1));
   eq('the best rod can reach every species', missing.length, 0,
     missing.map(c => `${c.name} (band ${c.band})`).join(', '));
+}
+
+/* ── upgrades: coins must buy something that actually changes the sim ─── */
+
+upgrades: {
+  const g = newGame();
+  const first = UPGRADES[0];
+
+  eq(`a fresh save has no levels`, state.upg(first.id), 0);
+  eq(`the first level costs its listed price`, state.upgPrice(first.id), first.costs[0]);
+  eq('you cannot buy what you cannot afford', state.buyUpg(first.id), 0);
+  eq('and no level was granted', state.upg(first.id), 0);
+
+  state.data.coins = first.costs[0];
+  const got = state.buyUpg(first.id);
+  eq('buying grants level 1', got, 1);
+  eq('and spends exactly the price', state.coins, 0);
+  eq('the next price is the next listed one', state.upgPrice(first.id), first.costs[1]);
+
+  // every track must reach its cap and then stop being purchasable
+  for (const u of UPGRADES) {
+    state.data.upg = {};                          // each track starts clean
+    state.data.coins = u.costs.reduce((a, b) => a + b, 0) + 500;
+    for (let i = 1; i <= u.max; i++) eq(`upgrade ${u.id} reaches level ${i}`, state.buyUpg(u.id), i);
+    eq(`upgrade ${u.id} reports maxed`, state.upg(u.id), u.max);
+    eq(`upgrade ${u.id} has no price when maxed`, state.upgPrice(u.id), null);
+    eq(`upgrade ${u.id} refuses to overspend`, state.buyUpg(u.id), 0);
+    eq(`upgrade ${u.id} stays at its cap`, state.upg(u.id), u.max);
+  }
+
+  // the multipliers must be monotone: a fully upgraded player is never worse
+  for (const u of UPGRADES) state.data.upg[u.id] = u.max;
+  eq('a maxed reel reels faster', Number(state.reelMult().toFixed(2)), 1.32);
+  eq('a maxed net pays more', Number(state.coinMult().toFixed(2)), 1.48);
+  ok('a maxed line softens tension', state.tensionMult() > 0 && state.tensionMult() < 1,
+    String(state.tensionMult()));
+  ok('a maxed charm finds more', state.charmLuck() > 0.1, String(state.charmLuck()));
+  ok('a maxed sonar bites sooner', state.waitMult() > 0 && state.waitMult() < 1, String(state.waitMult()));
+  ok('a maxed hook widens the window', state.hookWindow() > 0.4, String(state.hookWindow()));
+  eq('no single upgrade trivially breaks the game', state.reelMult() <= 1.5, true);
+
+  // a corrupt level must not poison the multipliers
+  localStorage.setItem('hooked.save.v1', JSON.stringify({ v: 1, upg: { reel: 99, net: -3, bogus: 5 }, caught: {} }));
+  state.load();
+  eq('an over-levelled upgrade is clamped', state.upg('reel'), upgById.get('reel').max);
+  eq('a negative level is dropped', state.upg('net'), 0);
+  eq('an unknown upgrade id is ignored', state.upg('bogus'), 0);
+}
+
+/* an upgrade must be worth buying: net coins at level 0 vs level max */
+upgradeWorth: {
+  const g = newGame();
+  g.target = CATCHES.find(c => c.band === 0 && c.rarity === 'common');
+  g.phase = Phase.FIGHT;
+  g._startFight();
+
+  const plain = (() => {
+    state.data.upg = {};
+    g.target = CATCHES.find(c => c.band === 0 && c.rarity === 'common');
+    g._land();
+    return g.result.coins;
+  })();
+
+  state.data.upg = { net: upgById.get('net').max };
+  const netted = (() => {
+    g.phase = Phase.FIGHT;
+    g.target = CATCHES.find(c => c.band === 0 && c.rarity === 'common');
+    g._land();
+    return g.result.coins;
+  })();
+
+  ok('the coin upgrade really pays more', netted > plain, `${plain} → ${netted}`);
+}
+
+/* ── secrets: gated, invisible when the gate is false ─────────────────── */
+
+secrets: {
+  const g = newGame();
+  g.depth = 20;                                  // band 2, where the streak lives
+  const sample = (n = 6000) => {
+    const seen = new Set();
+    for (let i = 0; i < n; i++) seen.add(g._roll().id);
+    return seen;
+  };
+
+  // the streak secret is band 2, so a band-2 cast is where to look for it
+  state.data.streak = 0;
+  ok('the streak secret is out of the water at streak 0', !sample().has('streak5'));
+
+  state.data.streak = 5;
+  ok('the streak secret appears at streak 5', sample().has('streak5'),
+    'never rolled in 6000 casts');
+
+  // the pity secret listens on the loss counter, not the streak
+  state.data.streak = 0;
+  state.data.losses = 0;
+  g.depth = 10;                                  // band 1, the pity band
+  ok('the pity catch needs a real drought', !sample().has('pity'));
+  state.data.losses = 3;
+  ok('the pity catch arrives after three losses', sample().has('pity'));
+
+  // cast power gates
+  g.depth = 3;                                   // band 0
+  state.data.casts = 0;
+  state.data.losses = 0;
+  g.castPower = 0.5;
+  ok('the weak-cast secret needs a weak cast', !sample().has('lowpower'));
+  g.castPower = 0.05;
+  ok('the weak-cast secret appears on a flick', sample().has('lowpower'));
+
+  // a secret must never be part of the visible codex total
+  ok('secrets do not inflate the visible roster', VISIBLE.every(c => !c.secret));
+  eq('the bar can reach 100% without secrets', state.completion() <= 1, true);
+}
+
+/* ── streak / drought bookkeeping, which the secrets depend on ────────── */
+
+streak: {
+  const g = newGame();
+  const easy = CATCHES.find(c => c.band === 0 && c.rarity === 'common');
+
+  g.target = easy; g.phase = Phase.FIGHT; g._startFight(); g._land();
+  g.target = easy; g.phase = Phase.FIGHT; g._startFight(); g._land();
+  eq('landings build a streak', state.data.streak, 2);
+  eq('and clear the drought', state.data.losses, 0);
+
+  g._lose('snapped');
+  eq('a loss breaks the streak', state.data.streak, 0);
+  eq('and counts the drought', state.data.losses, 1);
+
+  g.target = easy; g.phase = Phase.FIGHT; g._startFight(); g._land();
+  eq('landing again clears the drought', state.data.losses, 0);
+
+  // every losing path must bookkeep, not just the one we remembered
+  for (const reason of ['missed', 'snapped', 'escaped']) {
+    state.data.losses = 0;
+    g._lose(reason);
+    eq(`the ${reason} exit counts as a loss`, state.data.losses, 1);
+  }
 }
 
 /* ── save / load ─────────────────────────────────────────────────────── */

@@ -40,14 +40,36 @@ const played = await run(client, `
     g.step(1/60, { held: g.tension < 62 && !(g.surging && g.tension > 40), pressed: false });
   }
   return { bit, hooked, phase: g.phase, name: g.result && g.result.target ? g.result.target.name : null,
-           coins: h.state.data.coins, known: h.state.knownCount(), depth: +g.depth.toFixed(1) };
+           coins: h.state.data.coins, known: h.state.knownCount(), depth: +g.depth.toFixed(1),
+           total: h.CONTENT.CATCHES.filter(c => !c.secret).length };
 `);
 
 ok('bite arrived', played.bit === 'bite', played.bit);
 ok('bite hooked into a fight', played.hooked);
 ok('fight ended in a landing', played.phase === 'land', played.phase + ' ' + played.name);
 ok('coins were awarded', played.coins > 0, played.coins + 'c');
-ok('codex recorded the species', played.known === 1, played.known + '/40');
+ok('codex recorded the species', played.known === 1, played.known + '/100');
+ok('the roster is the expanded one', played.total >= 100, String(played.total));
+
+// the shop must be able to take coins and actually raise a level
+const bought = await run(client, `
+  const h = window.__hooked;
+  h.ui.closeAll();
+  h.state.data.coins = 5000;
+  const before = h.state.upg('reel');
+  h.state.buyUpg('reel');
+  h.ui.openShop();
+  const rows = document.querySelectorAll('#shopBody .item').length;
+  const pips = document.querySelectorAll('#shopBody .pip.on').length;
+  const label = (document.querySelector('#shopBody .item .lvl') || {}).textContent || '';
+  h.ui.closeAll();
+  return { before, after: h.state.upg('reel'), rows, pips, label };
+`);
+ok('the shop renders upgrade rows', bought.rows > 8, String(bought.rows));
+ok('buying an upgrade raises its level', bought.after === bought.before + 1,
+  `${bought.before} → ${bought.after}`);
+ok('the level shows in the row', /Lv 1\//.test(bought.label), bought.label);
+ok('the pip row is painted', bought.pips >= 1, String(bought.pips));
 
 // reload: the save must survive, and the HUD must show it on first paint
 await client.send('Page.navigate', { url: URL_ });

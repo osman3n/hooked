@@ -98,11 +98,24 @@ async function main() {
     await shoot(page, '05-catch');
     console.log('shot  05-catch');
 
-    // codex, with a partly filled save
+    // a secret card: it must read differently from an ordinary lucky catch
+    await evaluate(page, `
+      const h = window.__hooked;
+      const S = h.CONTENT.CATCHES.find(c => c.secret && c.id === 'maxpower');
+      h.ui.closeAll();
+      h.ui.showCard({ reason: 'landed', target: S, perfect: false, mult: 1,
+        coins: S.coins, isNew: true }); true`);
+    await sleep(600);
+    await shoot(page, '05b-secret');
+    console.log('shot  05b-secret');
+
+    // codex, with a partly filled save including a couple of secrets
     await evaluate(page, `
       const h = window.__hooked;
       h.game.reset();
       h.seed(21);
+      h.state.data.caught['streak5'] = { count: 1, best: 1, first: Date.now() };
+      h.state.data.caught['pity'] = { count: 2, best: 1, first: Date.now() };
       h.ui.closeAll();
       h.ui.openCodex();
       h.ui.refresh(); true`);
@@ -110,8 +123,13 @@ async function main() {
     await shoot(page, '06-codex');
     console.log('shot  06-codex');
 
-    // shop
-    await evaluate(page, 'window.__hooked.ui.closeAll(); window.__hooked.ui.openShop(); true');
+    // shop, scrolled to the upgrades with a few levels bought
+    await evaluate(page, `
+      const h = window.__hooked;
+      h.state.data.coins = 4000;
+      h.state.data.upg = { reel: 2, net: 1, charm: 3 };
+      h.ui.closeAll();
+      h.ui.openShop(); true`);
     await sleep(400);
     await shoot(page, '07-shop');
     console.log('shot  07-shop');

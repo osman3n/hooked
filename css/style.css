@@ -541,6 +541,28 @@ html, body {
 
 .catchCard > * { position: relative; }
 
+/* a secret is not a rarity tier — it is a thing that happened to you.
+   Give it its own halo so the card reads differently from a lucky roll. */
+.catchCard.secret {
+  border-color: rgba(255, 194, 71, 0.65);
+  box-shadow: var(--shadow), 0 0 0 1px rgba(255, 194, 71, 0.25), 0 0 60px rgba(255, 194, 71, 0.22);
+}
+.catchCard.secret::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 214, 130, 0.16) 50%, transparent 65%);
+  animation: sheen 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes sheen {
+  0%, 100% { transform: translateX(-60%); }
+  50% { transform: translateX(60%); }
+}
+.catchCard.secret .catchEmoji {
+  filter: drop-shadow(0 0 22px rgba(255, 194, 71, 0.6));
+}
+
 .rarityTag {
   display: inline-block;
   padding: 4px 12px;
@@ -788,6 +810,34 @@ html, body {
   color: var(--cyan);
   margin-top: 4px;
   text-transform: uppercase;
+}
+
+/* upgrade level: the number beside the name */
+.lvl {
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* pip row: one dot per level, filled for levels already bought */
+.pips {
+  display: flex;
+  gap: 4px;
+  margin-top: 7px;
+}
+.pip {
+  width: 13px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.pip.on {
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(255, 194, 71, 0.55);
 }
 
 .buyBtn {

@@ -58,6 +58,7 @@ function play(c, strategy) {
   state.data = {
     v: 1, coins: 0, caught: {}, rod: 'abyss', lure: 'none',
     bestDepth: 0, casts: 0, totalCoins: 0, muted: true, seenIntro: true,
+    upg: {}, streak: 0, losses: 0,
   };
   const g = new Game(state);
   g.depth = 30;

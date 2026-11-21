@@ -41,19 +41,51 @@ That gives four distinct ways to lose: snap at 100 tension, let slack hit 4.5 s,
 
 ## What you can catch
 
-40 things across five depth bands. Roughly a third are fish; the rest are the sea's honest opinion about the internet.
+**100 things** across five depth bands, plus **8 secrets** you cannot see in the codex until you find one. Maybe a third are fish. The rest are the sea's honest opinion about the internet.
 
-| Depth | Band | Examples |
+| Depth | Band | What lives there |
 | --- | --- | --- |
-| 0–7 m | Shore | Tiddler, Mud Snail, One Sock, Soggy Receipt, Sardine, A Boot |
-| 7–15 m | Shelf | Anxious Pufferfish, Crab With Attitude, Sea Bass. Again., Single AirPod, WiFi Router 1 Bar, USB-C Wrong Way Up, Rubber Duck (Senior), Existential Jellyfish, Croissant, Suspiciously Long Eel |
-| 15–26 m | Drop-off | Octopus No Plans, Sad Anglerfish, Mildly Threatening Swordfish, The Last Pringle, CAPTCHA, A Screenshot of an NFT, Phone at 1%, A Beige Flag, An Unlabelled Vibe, Group Chat (Muted) |
-| 26–40 m | Trench | Ghost Carp, Coelacanth, Giant Squid (Small In Person), Sentient Sourdough Starter, The Algorithm, The Text You Never Sent, Eternal Loading Spinner, Your Ex's Playlist, 404, Not Found |
-| 40 m+ | Abyss | The Kraken's Younger Cousin, Moonfish, The Backrooms Key, Schrödinger's Fish, The One That Got Away |
+| 0–7 m | Shore | Tiddler, Mud Snail, One Sock, Soggy Receipt, Sardine, Rusty Tin Can, Clump of Seaweed, Shell With Nobody In It, Goby Doing Its Best, A Boot, Message in a Bottle (Blank), One-Armed Sunglasses, Beach Sandal Size 46, Someone Else's Hook, Beach Ball With a Grudge, Very Small Frog, Key to a Flat You No Longer Rent, Wedding Ring (Not Yours) |
+| 7–15 m | Shelf | Sea Bass. Again., Sea Bass (A Different One), Suspiciously Fresh Mackerel, Croissant, Soggy Pizza Slice, Someone's Marble, Single AirPod, Wrong Charger Right Voltage, Anxious Pufferfish, Crab With Attitude, WiFi Router 1 Bar, USB-C Wrong Way Up, Rubber Duck (Senior), Existential Jellyfish, Reading Glasses −2.50, The LEGO You Stepped On, Wallet With No Cards, Suspiciously Long Eel, Floppy Disk (Unlabelled), Frisbee Still Flying |
+| 15–26 m | Drop-off | Phone at 1%, A Beige Flag, Dongle of Unknown Purpose, SIM Card Three Bars, A Notification You Dismissed, A Match Who Never Replied, Octopus No Plans, Sad Anglerfish, Mildly Threatening Swordfish, The Last Pringle, CAPTCHA, A Screenshot of an NFT, An Unlabelled Vibe, Group Chat (Muted), Mechanical Keyboard (Clicky), The Zipper That Ate Your Jacket, Recursion (See: Recursion), Fast Charger Still Warm, That One Bug You Fixed in Prod, Unlabelled Mixtape, Term Sheet Waterlogged, Lobster With a Mortgage |
+| 26–40 m | Trench | 404 Not Found, Mandatory Update, Group Chat: 'Dads of Fishing', Ghost Carp, The Text You Never Sent, Eternal Loading Spinner, A Voicemail From 2016, Terms of Service (Unread), Inbox: 4,112 Unread, An Invoice You Already Paid, Lanternfish With a Dental Plan, Merge Conflict Unresolved, Sentient Sourdough Starter, Coelacanth, Giant Squid (Small In Person), The Algorithm, Your Ex's Playlist, Friday Somehow, A Genuinely Beautiful Fish, The Hole Where Your Motivation Was, Seed Phrase (Laminated), A Cat Somehow |
+| 40 m+ | Abyss | Anglerfish With a Business Plan, Extended Warranty Expired, Your 2019 Tax Return, Gacha Pity Timer, Unidentified Submerged Object, A Door Slightly Ajar, The Kraken's Younger Cousin, Moonfish, The Backrooms Key, Fishing Permit From 2050, The Last Slice Still Warm, Leviathan Retired, The Dark Itself, A Memory You Trimmed, Schrödinger's Fish, The One That Got Away, 42, Catfish (Both Definitions) |
 
-Rarity split: 8 common · 10 uncommon · 12 rare · 5 epic · 3 legendary · 2 mythic.
+Rarity split across all 108: 18 common · 24 uncommon · 28 rare · 21 epic · 13 legendary · 4 mythic.
 
-Deeper water does not merely pay better — it has **its own roster**. A Shore-only player literally cannot complete the codex, which is why the shop gates rods on codex progress (`ROD_GATE = [0, 3, 9, 18]`) rather than on money: a lucky deep cast should be able to pay for its own rod.
+### The secrets
+
+Eight catches are not in the codex and are not in any band's total. Each one is gated on something about **how you happen to be playing right now**, so it reads as a thing that happened to you rather than a lucky roll:
+
+| Secret | Appears when |
+| --- | --- |
+| Splash, But No | you cast with almost no power |
+| Beginner's Luck | it is your very first cast |
+| Your Last Coin | you are nearly broke |
+| The Pity Catch | you have lost three in a row |
+| The 3 A.M. Thought | your local clock is between 00:00 and 05:00 |
+| The Streak | you have landed five in a row |
+| The Full Send | you cast at essentially full power |
+| A Literal Money Fish | you are sitting on 5,000+ coins |
+
+The gate is checked **before** weighting, so an ineligible secret is not in the water at all — it can never eat a slot that belonged to a real catch. Progress is measured against the 100 visible entries, so the bar can actually reach 100% without requiring you to fish at 3 a.m.
+
+## Upgrades
+
+Coins buy two different things: **gear** (rods reach deeper, lures bite faster) and **permanent upgrades**, which are six tracks of small, stacking multipliers. All levels are kept forever and all of them touch the simulation.
+
+| Upgrade | Levels | Effect per level |
+| --- | --- | --- |
+| 🎡 Smoother Reel | 4 | +8% line speed |
+| 🧵 Braided Line | 4 | −7% tension gain |
+| 🥅 Bigger Net | 4 | +12% coins |
+| 🍀 Lucky Charm | 4 | +3% rare finds |
+| 📡 Depth Sonar | 3 | −12% wait time |
+| 🪝 Wider Hook | 3 | +0.15 s hook window |
+
+Rods are gated on **codex progress**, not on money (`ROD_GATE = [0, 3, 9, 18]`), so a lucky deep cast can pay for its own rod. Upgrades are never gated — if you can afford it, it is yours.
+
+Deeper water does not merely pay better, it has **its own roster**. A Shore-only player literally cannot finish the codex, which is what makes the depth bands feel like places rather than difficulty tiers.
 
 ## Controls
 
@@ -76,9 +108,9 @@ npm run dev          # serves on http://localhost:8080
 Any static server works (`python -m http.server`, `npx serve`, …). You cannot open `index.html` from the filesystem — ES modules require HTTP.
 
 ```bash
-npm test             # 301 assertions, headless, no browser
+npm test             # 868 assertions, headless, no browser
 npm run balance      # prints a per-species balance table for 6 player archetypes
-npm run shots        # 8 screenshots via headless Chrome → shots/
+npm run shots        # 9 screenshots via headless Chrome → shots/
 npm run e2e          # plays the DEPLOYED site end-to-end, checks the save reloads
 ```
 
@@ -91,7 +123,7 @@ CI runs `test` and `balance` on every push (`.github/workflows/ci.yml`) — ther
 ```
 index.html          markup + HUD skeleton
 css/style.css       design system: tokens, glass panels, all states
-js/content.js       the 40 catches, rarity table, depth bands, rods, lures
+js/content.js       the 108 catches, secrets, rarity table, depth bands, rods, lures, upgrades
 js/sim.js           the entire game state machine — no DOM, no canvas
 js/state.js         localStorage save, coins, codex, unlock rules
 js/render.js        canvas scene: sky, water, kelp, particles, line, bobber
@@ -104,7 +136,7 @@ tools/              dev server, CDP client, screenshots, self-test, balance prob
 Deliberate choices:
 
 - **No bundler, no framework, no assets.** The whole repo is text, so GitHub Pages serves the source directly and it scales to any DPI. The favicon is an inline SVG emoji.
-- **`sim.js` has no DOM access.** The entire game is steppable in Node, which is why 301 assertions can run headless and why the balance probe can play 240 fights in two seconds.
+- **`sim.js` has no DOM access.** The entire game is steppable in Node, which is why 868 assertions can run headless and why the balance probe can play 648 fights in a couple of seconds.
 - **All audio is synthesised.** `js/audio.js` builds tones and noise plus a generated convolver reverb, so there is nothing to download and no licensing question.
 - **`tools/cdp.mjs` is a 120-line Chrome DevTools Protocol client** instead of Puppeteer, which keeps the zero-dependency promise while still catching real console errors — that client is how two of the bugs below were found.
 - **Balance is tested, not vibed.** `tools/balance.mjs` plays every species with six strategies (beginner, steady, greedy, idle, masher, calm) and asserts the shape of the outcome, not just that it runs.
@@ -119,6 +151,10 @@ Real ones, found by actually running the thing:
 - **Stalemate by design.** Surge cooldown was shorter than surge duration, so a strong fish surged continuously, progress sat at ×0.25, and the fight could be neither won nor lost. Rest now always outlasts the surge.
 - **The codex rendered as one narrow column.** The JS set `id="codexGrid"` while the CSS targeted the *class* `.codexGrid`. An id/class mismatch that no unit test would catch.
 - **Every request 403'd.** The dev server compared `target.startsWith(root)` with a relative root; `'index.html'.startsWith('.')` is false. Found by a HUD probe, not by a screenshot.
+- **A 241-second fight.** `fightLimit = 30 + stamina * 22` was fine for a 40-item roster, but the expansion added mythics with `stamina: 9.6`, so one bad fight could run four minutes and read as a hang. Capped at 75 s.
+- **The shop lied about its own upgrades.** `stat(lv)` reported the *current* level, so every unbought upgrade read `−0% TENSION GAIN` — which looks like a broken item, not a purchasable one. Now level 0 shows what the first purchase buys.
+- **A phantom upgrade level survived `load()`.** Corrupt-save repair clamped known ids but left unknown keys in the map, so a renamed upgrade would keep a ghost level. The map is now rebuilt from `UPGRADES` only.
+- **An ineligible secret could eat a real catch's slot.** Secrets are now filtered by their gate *before* weighting, so they are simply not in the water when their condition is false.
 
 ## License
 

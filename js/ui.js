@@ -2,7 +2,7 @@
    No game rules live here; if a decision needs the simulation, it belongs
    in sim.js. This file only answers "what should the player see right now". */
 
-import { CATCHES, RARITY, RODS, LURES, BANDS, bandFor, byId, TOTAL } from './content.js';
+import { CATCHES, RARITY, RODS, LURES, BANDS, bandFor, byId, TOTAL, ALL, VISIBLE, SECRETS, UPGRADES } from './content.js';
 import { state } from './state.js';
 import { Phase } from './sim.js';
 import { SFX, isMuted, setMuted } from './audio.js';
@@ -301,11 +301,11 @@ export class UI {
       `;
       card.appendChild(wrap);
     } else {
-      const wrap = el('div', 'catchCard');
+      const wrap = el('div', 'catchCard' + (c.secret ? ' secret' : ''));
       wrap.style.setProperty('--glowCol', glow);
       const owned = state.data.caught[c.id];
       wrap.innerHTML = `
-        <span class="rarityTag" style="color:${r.color}">${r.label}</span>
+        <span class="rarityTag" style="color:${r.color}">${c.secret ? '✦ Secret · ' : ''}${r.label}</span>
         <span class="catchEmoji">${c.emoji}</span>
         <div class="catchName" style="color:${r.color}">${c.name}</div>
         <p class="catchBlurb">${c.blurb}</p>
@@ -381,9 +381,11 @@ export class UI {
     if (bar) bar.style.width = pct + '%';
     if (p) p.textContent = pct + '%';
 
-    // one labelled grid per depth band, so the codex reads as a food chain
+    // one labelled grid per depth band, so the codex reads as a food chain.
+    // Only the non-secret roster counts toward a band's total; secrets get
+    // their own section at the bottom and simply are not there until found.
     for (const band of BANDS) {
-      const items = CATCHES.filter(c => c.band === band.id);
+      const items = VISIBLE.filter(c => c.band === band.id);
       const known = items.filter(c => state.known(c.id)).length;
       list.appendChild(el('div', 'sectLabel', `${band.name} · ${known}/${items.length}`));
 
@@ -403,6 +405,27 @@ export class UI {
           node.innerHTML = `<span class="cxEmoji">❓</span><span class="cxName">???</span>`;
           node.disabled = true;
         }
+        grid.appendChild(node);
+      }
+      list.appendChild(grid);
+    }
+
+    // secrets: the whole section appears only once you have found at least one,
+    // and then shows only the ones you have actually caught
+    const found = SECRETS.filter(c => state.known(c.id));
+    if (found.length) {
+      list.appendChild(el('div', 'sectLabel',
+        `Secrets · ${found.length}/${SECRETS.length} found`));
+      const grid = el('div', 'codexGrid');
+      for (const c of found) {
+        const r = RARITY[c.rarity];
+        const node = el('button', 'cx');
+        node.style.setProperty('--rc', r.color);
+        node.innerHTML = `
+          <span class="cxEmoji">${c.emoji}</span>
+          <span class="cxName">${c.name}</span>
+          <span class="cxCount">${state.data.caught[c.id].count}</span>`;
+        node.addEventListener('click', () => this.showCodexEntry(c));
         grid.appendChild(node);
       }
       list.appendChild(grid);
@@ -444,7 +467,7 @@ export class UI {
       <div class="panelHead">
         <div>
           <h2 id="shopTitle">Tackle Box</h2>
-          <div class="sub">Rods reach deeper. Lures bite faster.</div>
+          <div class="sub">Upgrades are permanent. Rods reach deeper. Lures bite faster.</div>
         </div>
         <button class="xBtn" data-close aria-label="Close">✕</button>
       </div>
@@ -463,6 +486,40 @@ export class UI {
   _refreshShop() {
     const body = $('shopBody');
     body.innerHTML = '';
+
+    /* ── permanent upgrades, the main coin sink ── */
+    body.appendChild(el('div', 'sectLabel', 'Upgrades · permanent'));
+    for (const u of UPGRADES) {
+      const lv = state.upg(u.id);
+      const maxed = lv >= u.max;
+      const price = state.upgPrice(u.id);
+      const canBuy = !maxed && state.coins >= price;
+
+      const node = el('div', 'item' + (maxed ? ' owned' : ''));
+      const pips = Array.from({ length: u.max },
+        (_, i) => `<i class="pip${i < lv ? ' on' : ''}"></i>`).join('');
+      node.innerHTML = `
+        <span class="itemEmoji">${u.emoji}</span>
+        <div class="itemInfo">
+          <div class="itemName">${u.name} <span class="lvl">Lv ${lv}/${u.max}</span></div>
+          <div class="itemDesc">${u.desc}</div>
+          <div class="itemMeta">${u.stat(lv)}</div>
+          <div class="pips">${pips}</div>
+        </div>`;
+      const b = el('button', 'buyBtn');
+      if (maxed) { b.textContent = 'Maxed'; b.disabled = true; }
+      else { b.textContent = `◎ ${fmt(price)}`; b.disabled = !canBuy; }
+      b.addEventListener('click', () => {
+        const got = state.buyUpg(u.id);
+        if (!got) return;
+        SFX.coin();
+        this.toast(`${u.name} → Lv ${got}`, 'good');
+        this._refreshShop();
+        this.refresh();
+      });
+      node.appendChild(b);
+      body.appendChild(node);
+    }
 
     body.appendChild(el('div', 'sectLabel', 'Rods'));
     for (const r of RODS) {
@@ -493,12 +550,13 @@ export class UI {
     }
 
     body.appendChild(el('div', 'sectLabel', 'Lures'));
+    const lureEmoji = { none: '🪝', worm: '🪱', glow: '✨', weird: '🫧', slop: '🍜' };
     for (const l of LURES) {
       const owned = state.data.lure === l.id;
       const canBuy = !owned && state.coins >= l.cost;
       const node = el('div', 'item' + (owned ? ' owned' : ''));
       node.innerHTML = `
-        <span class="itemEmoji">${l.id === 'none' ? '🪝' : l.id === 'worm' ? '🪱' : l.id === 'glow' ? '✨' : '🫧'}</span>
+        <span class="itemEmoji">${lureEmoji[l.id] || '🪝'}</span>
         <div class="itemInfo">
           <div class="itemName">${l.name}</div>
           <div class="itemDesc">${l.desc}</div>
